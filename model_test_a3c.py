@@ -6,7 +6,7 @@ import AGENT_NET
 
 print('start_test'+'#'*60)
 f_worker.agent=AGENT_NET.DoubleNet_softmax_simple(W,MAXNUM_TASKS,TANH).to(DEVICE)
-f_worker.agent.load_state_dict(torch.load("./data/CS_A3C_model_parameter.pkl"))
+f_worker.agent.load_state_dict(torch.load("../data/CS_A3C_model_parameter.pkl"))
 tl_0=model_test(env_c,f_worker,50)
 print('#'*20)
 env_c.cut_states=False

@@ -98,10 +98,10 @@ agent=AC.ActorCritic_Double_softmax(W,maxnum_tasks,1,gamma,device,
     clip_grad='max',beta=1e-1,n_steps=0,mode='gce',labda=0.95,proc_name='-1',optimizer=optim,net=net)
 '''agent=AC.ActorCritic_Double_softmax0(W,maxnum_tasks,lr,1,gamma,device,
     clip_grad=1e-1,beta=1e-1,n_steps=0,mode='gce',labda=0.95,eps=1e-8,tanh=tanh)'''
-#agent.agent.load_state_dict(torch.load("./data/CS_AC_model_parameter.pkl"))
+#agent.agent.load_state_dict(torch.load("../data/CS_AC_model_parameter.pkl"))
 if __name__=='__main__':
     rl_utils.train_on_policy_agent(env_c,agent,num_episodes,max_steps,10)
-    torch.save(agent.agent.state_dict(), "./data/CS_AC_model_parameter.pkl")
+    torch.save(agent.agent.state_dict(), "../data/CS_AC_model_parameter.pkl")
     agent.writer.close()
     tl_0=model_test(env_c,agent,10)
     print('#'*20)

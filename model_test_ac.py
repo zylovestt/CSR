@@ -4,7 +4,7 @@ from TEST import model_test
 from CS_AC_test import env_c,agent,maxnum_tasks
 
 print('start_test'+'#'*60)
-agent.agent.load_state_dict(torch.load("./data/CS_AC_model_parameter.pkl"))
+agent.agent.load_state_dict(torch.load("../data/CS_AC_model_parameter.pkl"))
 tl_0=model_test(env_c,agent,10)
 print('#'*20)
 env_c.cut_states=False

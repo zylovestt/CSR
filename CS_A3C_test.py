@@ -179,7 +179,7 @@ if __name__=='__main__':
     train_queue=mp.Queue(QUEUE_SIZE)
     #net=AGENT_NET.DoubleNet_softmax(W,MAXNUM_TASKS).to(DEVICE)
     net=AGENT_NET.DoubleNet_softmax_simple(W,MAXNUM_TASKS,TANH).to(DEVICE)
-    #net.load_state_dict(torch.load("./data/CS_A3C_model_parameter.pkl"))
+    #net.load_state_dict(torch.load("../data/CS_A3C_model_parameter.pkl"))
     net.share_memory()
     optimizer=torch.optim.NAdam(net.parameters(),lr=LR,eps=EPS)
     
@@ -216,7 +216,7 @@ if __name__=='__main__':
                 optimizer.step()
                 grad_buffer = None
             if step_idx%100==0:
-                torch.save(net.state_dict(), "./data/CS_A3C_model_parameter.pkl")
+                torch.save(net.state_dict(), "../data/CS_A3C_model_parameter.pkl")
     finally:
         for p in data_proc_list:
             p.terminate()
@@ -234,6 +234,6 @@ if __name__=='__main__':
     s_agent=CS_ENV.OTHER_AGENT(CS_ENV.short_twe_choice,MAXNUM_TASKS)
     tl_2=model_test(env_c,s_agent,10)
     print('agent_choice:{},r_choice:{},short_wait_choice:{}'.format(tl_0,tl_1,tl_2))
-    torch.save(net.state_dict(), "./data/CS_A3C_model_parameter.pkl")
+    torch.save(net.state_dict(), "../data/CS_A3C_model_parameter.pkl")
     np.random.seed(1)
     print(np.random.randint(1,10))

@@ -96,14 +96,14 @@ epochs = 3
 eps = 0.2
 
 net=AGENT_NET.DoubleNet_softmax_simple(W,maxnum_tasks,tanh,depart=True).to(device)
-#net.load_state_dict(torch.load("./data/CS_PPO_model_parameter.pkl"))
+#net.load_state_dict(torch.load("../data/CS_PPO_model_parameter.pkl"))
 optim=torch.optim.NAdam(net.parameters(),lr=lr,eps=1e-8)
 agent = PPO.PPO_softmax(W,maxnum_tasks,1,  gamma, device,1e-1,lmbda,epochs, eps,1e-5,net,optim,cut=False)
 
 if __name__=='__main__':
     t_start=time.time()
     return_list = rl_utils.train_on_policy_agent(env_c, agent, num_episodes,max_steps,cycles=10,T_cycles=20,T_max=0)
-    torch.save(agent.agent.state_dict(), "./data/CS_PPO_model_parameter.pkl")
+    torch.save(agent.agent.state_dict(), "../data/CS_PPO_model_parameter.pkl")
     agent.writer.close()
 
     #env_c.reset_step=False
