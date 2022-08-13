@@ -2,7 +2,7 @@ import numpy as np
 import CS_ENV
 import torch
 import rl_utils
-import PPO
+import PPO 
 import math
 from TEST import model_test
 import AGENT_NET
@@ -11,12 +11,12 @@ import time
 np.random.seed(1)
 torch.manual_seed(0)
 lr = 1e-4
-num_episodes = 500
+num_episodes = 50
 gamma = 0.98
-num_pros=5
-maxnum_tasks=5
-env_steps=50
-max_steps=5
+num_pros=10
+maxnum_tasks=10
+env_steps=100
+max_steps=10
 tanh=True
 device = torch.device("cuda")
 iseed=1
@@ -73,7 +73,7 @@ lams['C']=1*1e-1
 bases={x:1 for x in z}
 
 env_c=CS_ENV.CSENV(pro_dics,maxnum_tasks,task_dics,
-        job_dic,loc_config,lams,env_steps,bases,bases,seed,tseed,reset_states=True,cut_states=False,init_seed=iseed,reset_step=True)
+        job_dic,loc_config,lams,env_steps,bases,bases,seed,tseed,reset_states=False,cut_states=True,init_seed=iseed,reset_step=False)
     
 state=env_c.reset()
 W=(state[0].shape,state[1].shape)
@@ -105,7 +105,9 @@ if __name__=='__main__':
     return_list = rl_utils.train_on_policy_agent(env_c, agent, num_episodes,max_steps,cycles=10,T_cycles=20,T_max=0)
     torch.save(agent.agent.state_dict(), "../data/CS_PPO_model_parameter.pkl")
     agent.writer.close()
-
+ 
+    #env_c.reset_step=False
+    #env_c.reset_states=True
     #env_c.reset_step=False
     tl_0=model_test(env_c,agent,10)
     #tl_0=return_list[0]
