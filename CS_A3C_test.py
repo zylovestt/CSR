@@ -12,16 +12,16 @@ import os
 np.random.seed(1)
 torch.manual_seed(0)
 LR=1e-4
-NUM_EPISODES=400
-ENV_STEPS=50
-MAX_STEPS=50
-NUM_PROCESSINGS=8
+NUM_EPISODES=10
+ENV_STEPS=100
+MAX_STEPS=10
+NUM_PROCESSINGS=4
 NUM_ENVS=4
 QUEUE_SIZE=NUM_PROCESSINGS
 TRAIN_BATCH=2
 NUM_PROCESSORS=10
 MAXNUM_TASKS=10
-BATCH_SIZE=NUM_ENVS*4
+BATCH_SIZE=NUM_ENVS
 GAMMA=0.98
 EPS=1e-8
 CYCLSES=10
@@ -64,7 +64,7 @@ task_dic['ez']=(0.5,1)
 task_dic['rz']=(0.5,1)
 task_dics=[CS_ENV.ftask_config(task_dic) for _ in range(MAXNUM_TASKS)]
 job_d={}
-job_d['time']=(1,1)
+job_d['time']=(0.1,0.3)
 job_d['womiga']=(0.5,1)
 job_d['sigma']=(0.5,1)
 job_d['num']=(1,MAXNUM_TASKS)
@@ -152,9 +152,9 @@ def data_func(proc_name,net,train_queue,id):
                     print('{}: speed:{}'.format(proc_name,s))
                     worker.writer.add_scalar(tag='speed',scalar_value=s,global_step=i_episode)
                     frame_idx,ts_time=0,time.time()
-                    test_reward=model_test(env,worker,1)
-                    print('{}: episode:{} test_reward:{}'.format(proc_name,i_episode,test_reward))
-                    worker.writer.add_scalar('test_reward',test_reward,i_episode)
+                    test_reward=model_test(env,worker,10)
+                    print('{}: episode:{} test_reward:{}'.format(proc_name,i_episode,test_reward[0]))
+                    worker.writer.add_scalar('test_reward',test_reward[0],i_episode)
                     print('{}: episode:{} reward:{}'.format(proc_name,i_episode,np.mean(return_list[-CYCLSES:])))
                 state[i] = env.reset()
                 done = False
@@ -173,13 +173,12 @@ if __name__=='__main__':
     mp.set_start_method('spawn',force=True)
     os.environ['OMP_NUM_THREADS'] = '1'
     os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-    DEVICE = "cpu"
 
     '''F,Q,er,econs,rcons,B,p,g,d,w,alpha,twe,ler'''
     train_queue=mp.Queue(QUEUE_SIZE)
     #net=AGENT_NET.DoubleNet_softmax(W,MAXNUM_TASKS).to(DEVICE)
     net=AGENT_NET.DoubleNet_softmax_simple(W,MAXNUM_TASKS,TANH).to(DEVICE)
-    net.load_state_dict(torch.load("../data/CS_A3C_model_parameter.pkl"))
+    #net.load_state_dict(torch.load("../data/CS_A3C_model_parameter.pkl"))
     net.share_memory()
     optimizer=torch.optim.NAdam(net.parameters(),lr=LR,eps=EPS)
     
@@ -223,7 +222,7 @@ if __name__=='__main__':
             p.join()
 
     f_worker.agent=net
-    tl_0=model_test(env_c,f_worker,1)
+    tl_0=model_test(env_c,f_worker,10)
     print('#'*20)
 
     env_c.cut_states=False
@@ -233,7 +232,5 @@ if __name__=='__main__':
     print('#'*20)
     s_agent=CS_ENV.OTHER_AGENT(CS_ENV.short_twe_choice,MAXNUM_TASKS)
     tl_2=model_test(env_c,s_agent,10)
-    print('agent_choice:{},r_choice:{},short_wait_choice:{}'.format(tl_0,tl_1,tl_2))
+    print('agent_choice:{},r_choice:{},short_wait_choice:{}'.format(tl_0[0],tl_1[0],tl_2[0]))
     torch.save(net.state_dict(), "../data/CS_A3C_model_parameter.pkl")
-    np.random.seed(1)
-    print(np.random.randint(1,10))

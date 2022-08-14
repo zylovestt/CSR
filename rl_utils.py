@@ -36,12 +36,10 @@ def train_on_policy_agent(env, agent, num_episodes,max_steps,cycles,T_cycles=tor
     ts_time=time.time()
     return_list = []
     done=False
-    step_rewards=[[]]
     state = env.reset()
     episode_return = 0
     i_episode=0
     k=0
-    p=0
     while i_episode < num_episodes:
         transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': [], 'overs': []}
         step=0
@@ -59,9 +57,6 @@ def train_on_policy_agent(env, agent, num_episodes,max_steps,cycles,T_cycles=tor
             transition_dict['overs'].append(over)
             state = next_state
             episode_return += reward
-            step_rewards[-1].append(reward)
-            writer.add_scalar(tag='step_rewards:'+str(i_episode),scalar_value=reward,global_step=p)
-            p+=1
         if done:
             return_list.append(episode_return)
             writer.add_scalar(tag='return',scalar_value=episode_return,global_step=i_episode)
@@ -69,22 +64,20 @@ def train_on_policy_agent(env, agent, num_episodes,max_steps,cycles,T_cycles=tor
             if i_episode % cycles == 0:
                 print('speed:{}'.format(frame_idx/(time.time()-ts_time)))
                 frame_idx,ts_time=0,time.time()
-                test_reward=model_test(env,agent,1,recored=False)
+                test_reward=model_test(env,agent,10,recored=False)
                 print('episode:{}, test_reward:{}'.format(i_episode,test_reward[0]))
                 writer.add_scalar('test_reward',test_reward[0],i_episode)
                 print('episode:{}, reward:{}'.format(i_episode,np.mean(return_list[-cycles:])))
             state = env.reset()
             done = False
             episode_return = 0
-            step_rewards.append([])
-            p=0
-        agent.update(transition_dict)
         if k%T_cycles==0 and max_steps<T_max:
             max_steps+=1
         if print_steps:
             print('env_steps:{}'.format(env.num_steps))
+        agent.update(transition_dict)
     writer.close()
-    return return_list,step_rewards
+    return return_list
 
 def train_on_policy_agent_batch(env, agent, num_episodes,max_steps,cycles,T_cycles=torch.inf,T_max=0,print_steps=False):
     writer=agent.writer
@@ -131,55 +124,6 @@ def train_on_policy_agent_batch(env, agent, num_episodes,max_steps,cycles,T_cycl
             max_steps+=1
         if print_steps:
             print('env_steps:{}'.format(env.num_steps))
-        agent.update(transition_dict)
-    writer.close()
-    return return_list
-
-def train_on_policy_agent_batch0(env, agent, num_episodes,max_steps,cycles,T_cycles=torch.inf,T_max=0,env_batchsize=1):
-    writer=agent.writer
-    frame_idx=0
-    ts_time=time.time()
-    return_list = []
-    done=False
-    state = env.reset()
-    episode_return = 0
-    i_episode=0
-    k=0
-    while i_episode < num_episodes:
-        transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': [], 'overs': []}
-        for _ in range(env_batchsize):
-            step=0
-            k+=1
-            while not done and step<max_steps:
-                step+=1
-                frame_idx+=1
-                action = agent.take_action(state)
-                next_state, reward, done, over, _ = env.step(action)
-                transition_dict['states'].append(state)
-                transition_dict['actions'].append(action)
-                transition_dict['next_states'].append(next_state)
-                transition_dict['rewards'].append(reward)
-                transition_dict['dones'].append(done)
-                transition_dict['overs'].append(over)
-                state = next_state
-                episode_return += reward
-            if done:
-                return_list.append(episode_return)
-                writer.add_scalar(tag='return',scalar_value=episode_return,global_step=i_episode)
-                i_episode+=1
-                if i_episode % cycles == 0:
-                    print('speed:{}'.format(frame_idx/(time.time()-ts_time)))
-                    frame_idx,ts_time=0,time.time()
-                    test_reward=model_test(env,agent,1,recored=False)
-                    print('episode:{}, test_reward:{}'.format(i_episode,test_reward[0]))
-                    writer.add_scalar('test_reward',test_reward[0],i_episode)
-                    print('episode:{}, reward:{}'.format(i_episode,np.mean(return_list[-cycles:])))
-                state = env.reset()
-                done = False
-                episode_return = 0
-            if k%T_cycles==0 and max_steps<T_max:
-                max_steps+=1
-            #print('env_steps:{}'.format(env.num_steps))
         agent.update(transition_dict)
     writer.close()
     return return_list

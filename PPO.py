@@ -703,11 +703,6 @@ class PPO_softmax:
     def take_action(self, state):
         F=lambda x:torch.tensor(x,dtype=torch.float).to(self.device)
         state=(F(state[0]),F(state[1]))
-        '''u=state[0][:,:,:,:-self.num_subtasks]
-        for i in u:
-            i[:]=(i-i.mean())/i.std()
-        for i in state[1]:
-            i[:]=(i-i.mean())/i.std()'''
         self.norm(state)
         (probs_subtasks_orginal,probs_prior_orginal),_=self.agent(state)
         action_subtasks=[torch.distributions.Categorical(logits=x).sample().item()
@@ -729,21 +724,11 @@ class PPO_softmax:
     def update(self, transition_dict):
         F=lambda x:torch.tensor(x,dtype=torch.float).to(self.device)
         states=tuple(F(np.concatenate([x[i] for x in transition_dict['states']],0)) for i in range(len(transition_dict['states'][0])))
-        '''u=states[0][:,:,:,:-self.num_subtasks]
-        for i in u:
-            i[:]=(i-i.mean())/i.std()
-        for i in states[1]:
-            i[:]=(i-i.mean())/i.std()'''
         self.norm(states)
         actions=tuple(F(np.vstack([x[i] for x in transition_dict['actions']])).type(torch.int64) for i in range(len(transition_dict['actions'][0])))
 
         rewards=F(transition_dict['rewards']).view(-1,1)
         next_states=tuple(F(np.concatenate([x[i] for x in transition_dict['next_states']],0)) for i in range(len(transition_dict['states'][0])))
-        '''u=next_states[0][:,:,:,:-self.num_subtasks]
-        for i in u:
-            i[:]=(i-i.mean())/i.std()
-        for i in next_states[1]:
-            i[:]=(i-i.mean())/i.std()'''
         self.norm(next_states)
         overs=F(transition_dict['overs']).view(-1,1)
         dones=transition_dict['dones']
@@ -799,7 +784,7 @@ class PPO_softmax:
             self.agent_optimizer.step()
             self.writer.add_scalar(tag='cri_loss',scalar_value=critic_loss.item(),global_step=self.step)
             self.writer.add_scalar(tag='ac',scalar_value=actor_loss.item(),global_step=self.step)
-            self.writer.add_scalar(tag='epo',scalar_value=epo_loss.item(),global_step=self.step)
+            self.writer.add_scalar(tag='epo_loss',scalar_value=epo_loss.item(),global_step=self.step)
             if not self.agent.depart:
                 self.writer.add_scalar(tag='agent_loss',scalar_value=loss.item(),global_step=self.step)
             if j>0:

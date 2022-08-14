@@ -303,7 +303,7 @@ class CSENV:
         self.num_steps+=1
         if self.num_steps>=self.maxnum_episode:
             self.done=1
-            #print(str(self.name)+' done')
+            print(str(self.name)+' done')
         if self.reset_step:
             l=['er','econs','rcons','B','p','g']
             for pro,pro_conf in zip(self.processors.pros,self.pro_configs):

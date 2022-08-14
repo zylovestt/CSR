@@ -788,7 +788,7 @@ class ActorCritic_Double_softmax1:
         return self.cal_(r,0,self.gamma*self.labda)
 
 class ActorCritic_Double_softmax:
-    def __init__(self,input_shape,num_subtasks,weights,gamma,device,clip_grad,beta,n_steps,mode,labda,proc_name,optimizer=None,net=None):
+    def __init__(self,input_shape,num_subtasks,weights,gamma,device,clip_grad,beta,n_steps,mode,labda,proc_name,optimizer=None,net=None,norm=None):
         self.writer=SummaryWriter(comment='A3C'+proc_name)
         self.step=0
         self.num_processors=input_shape[0][2]
@@ -809,15 +809,58 @@ class ActorCritic_Double_softmax:
         self.ac_loss=[]
         self.agent=net
         self.optimizer=optimizer
+        self.norm=self.F_norm(norm)
+    
+    def F_norm(self,norm):
+        def mean_std_all(state):
+            u=state[0][:,:,:,:-self.num_subtasks]
+            for i in u:
+                i[:]=(i-i.mean())/i.std()
+            for i in state[1]:
+                i[:]=(i-i.mean())/i.std()
+        
+        def mean_std_single(state):
+            u=state[0][:,:,:,:-self.num_subtasks]
+            for i in u:
+                for j in i[0]:
+                    j[:]=(j-j.mean())/j.std()
+            for i in state[1]:
+                i[:]=(i-i.mean())/i.std()
+        
+        def low_high_all(state):
+            u=state[0][:,:,:,:-self.num_subtasks]
+            for i in u:
+                i[:]=(i-torch.min(i))/(torch.max(i)-torch.min(i))
+            for i in state[1]:
+                i[:]=(i-torch.min(i))/(torch.max(i)-torch.min(i))
+        
+        def low_high_single(state):
+            u=state[0][:,:,:,:-self.num_subtasks]
+            for i in u:
+                for j in i[0]:
+                    j[:]=(j-torch.min(i))/(torch.max(j)-torch.min(j))
+            for i in state[1]:
+                i[:]=(i-torch.min(i))/(torch.max(i)-torch.min(i))
+        
+        if norm=='msa':
+            return mean_std_all
+        if norm=='mss':
+            return mean_std_single
+        if norm=='lha':
+            return low_high_all
+        if norm=='lhs':
+            return low_high_single
+        return lambda x:x
     
     def take_action(self,state):
         F=lambda x:torch.tensor(x,dtype=torch.float).to(self.device)
         state=(F(state[0]),F(state[1]))
-        u=state[0][:,:,:,:-self.num_subtasks]
+        '''u=state[0][:,:,:,:-self.num_subtasks]
         for i in u:
             i[:]=(i-i.mean())/i.std()
         for i in state[1]:
-            i[:]=(i-i.mean())/i.std()
+            i[:]=(i-i.mean())/i.std()'''
+        self.norm(state)
         (probs_subtasks_orginal,probs_prior_orginal),_=self.agent(state)
         action_subtasks=[]
         for x in probs_subtasks_orginal:
@@ -839,20 +882,22 @@ class ActorCritic_Double_softmax:
     def update(self, transition_dict:dict):
         F=lambda x:torch.tensor(x,dtype=torch.float).to(self.device)
         states=tuple(F(np.concatenate([x[i] for x in transition_dict['states']],0)) for i in range(len(transition_dict['states'][0])))
-        u=states[0][:,:,:,:-self.num_subtasks]
+        '''u=states[0][:,:,:,:-self.num_subtasks]
         for i in u:
             i[:]=(i-i.mean())/i.std()
         for i in states[1]:
-            i[:]=(i-i.mean())/i.std()
+            i[:]=(i-i.mean())/i.std()'''
+        self.norm(states)
         actions=tuple(F(np.vstack([x[i] for x in transition_dict['actions']])).type(torch.int64) for i in range(len(transition_dict['actions'][0])))
 
         rewards=F(transition_dict['rewards']).view(-1,1)
         next_states=tuple(F(np.concatenate([x[i] for x in transition_dict['next_states']],0)) for i in range(len(transition_dict['states'][0])))
-        u=next_states[0][:,:,:,:-self.num_subtasks]
+        '''u=next_states[0][:,:,:,:-self.num_subtasks]
         for i in u:
             i[:]=(i-i.mean())/i.std()
         for i in next_states[1]:
-            i[:]=(i-i.mean())/i.std()
+            i[:]=(i-i.mean())/i.std()'''
+        self.norm(next_states)
         overs=F(transition_dict['overs']).view(-1,1)
         # 时序差分目标
         if self.mode=='n_steps':
