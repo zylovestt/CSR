@@ -8,10 +8,10 @@ lmbda = 0.95
 epochs = 3
 eps = 0.2
 
-net.load_state_dict(torch.load("../data/CS_PPO_model_parameter.pkl"))
+#net.load_state_dict(torch.load("../data/CS_PPO_model_parameter.pkl"))
 #print(1/(maxnum_tasks*math.log(maxnum_tasks*num_pros)))
 #beta=1/(maxnum_tasks*math.log(maxnum_tasks*num_pros))
-beta=1e-5
+beta=0
 agent = PPO.PPO_softmax(W,maxnum_tasks,weights=1,  gamma=gamma, device=device,clip_grad=1e-1,lmbda=lmbda,epochs=epochs, eps=eps,beta=beta,net=net,optim=optim,cut=False,norm='mss')
 
 if __name__=='__main__':

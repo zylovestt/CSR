@@ -179,10 +179,11 @@ class JOB:
 class CSENV:
     name=0
     def __init__(self,pro_configs:list,maxnum_tasks:int,task_configs:list,job_config:dict,loc_config,
-        lams:dict,maxnum_episode:int,bases:dict,bases_fm:dict,seed:list,test_seed:list,reset_states=False,cut_states=True,init_seed=1,reset_step=False):
+        lams:dict,maxnum_episode:int,bases:dict,bases_fm:dict,seed:list,test_seed:list,reset_states=False,
+        cut_states=False,init_seed=1,reset_step=False,change_prob=0):
         '''lams:Q,T,C,F'''
-        np.random.seed(init_seed)
         self.name+=1
+        self.init_seed=init_seed
         self.pro_configs=pro_configs
         self.task_configs=task_configs
         self.job_config=job_config
@@ -210,11 +211,13 @@ class CSENV:
         self.seedid=0
         self.test_seed=test_seed
         self.test_id=0
+        np.random.seed(init_seed)
         self.processors=PROCESSORS(self.pro_configs)
         self.job=JOB(self.maxnum_tasks,self.task_configs,self.job_config)
         self.reset_states=reset_states
         self.cut_states=cut_states
         self.reset_step=reset_step
+        self.change_prob=change_prob
     
     def send(self):
         self.tin,self.tasks,self.womiga,self.sigma=self.job()
@@ -276,7 +279,9 @@ class CSENV:
         else:
             self.job.job_index=0
             self.job.tin=0
-            for pro in self.processors.pros:
+            np.random.seed(self.init_seed)
+            self.processors=PROCESSORS(self.pro_configs)
+            '''for pro in self.processors.pros:
                 pro.Exe=0
                 pro.UExe=0
                 pro.cal_PF()
@@ -285,7 +290,7 @@ class CSENV:
                 pro.cal_Aq()
                 pro.t=0
                 pro.pro_dic['twe']=0
-                pro.pro_dic['ler']=0
+                pro.pro_dic['ler']=0'''
         if self.train:
             np.random.seed(self.seed[self.seedid%len(self.seed)])
             self.seedid+=1
@@ -309,6 +314,19 @@ class CSENV:
             for pro,pro_conf in zip(self.processors.pros,self.pro_configs):
                 for key in l:
                     pro.pro_dic[key]=pro_conf[key]()
+        if self.change_prob:
+            l=['er','econs','rcons','B','p','g']
+            for pro,pro_conf in zip(self.processors.pros,self.pro_configs):
+                if not pro.pro_dic['ler'] and not pro.pro_dic['twe'] and np.random.random()<self.change_prob:
+                    print('change')
+                    for key in l:
+                        pro.pro_dic[key]=pro_conf[key]()
+                        pro.Exe=0
+                        pro.UExe=0
+                        pro.cal_PF()
+                        pro.sum_Aq=0
+                        pro.Nk=0
+                        pro.cal_Aq()
         return self.send(),reward,self.done,self.over,None
 
 class RANDOM_AGENT:
@@ -415,7 +433,7 @@ if __name__=='__main__':
     z=['Q','T','C','F']
     lams={x:1 for x in z}
     bases={x:1 for x in z}
-    job_pros=CSENV(pro_dics,maxnum_tasks,task_dics,job_dic,loc_config,lams,100,bases,bases,[7],[9])
+    job_pros=CSENV(pro_dics,maxnum_tasks,task_dics,job_dic,loc_config,lams,100,bases,bases,[0],[0],cut_states=False)
     state=job_pros.reset()
     A=state[0].reshape(num_pros,-1)
     A=np.around(A,2)

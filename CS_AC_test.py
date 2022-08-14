@@ -6,7 +6,7 @@ from PUBLIC_ENV import *
 
 #net.load_state_dict(torch.load("../data/CS_AC_model_parameter.pkl"))
 agent=AC.ActorCritic_Double_softmax(W,maxnum_tasks,1,gamma,device,
-    clip_grad='max',beta=1e-1,n_steps=0,mode='gce',labda=0.95,proc_name='0',optimizer=optim,net=net,norm='mss')
+    clip_grad='max',beta=1e-5,n_steps=0,mode='gce',labda=0.95,proc_name='0',optimizer=optim,net=net,norm='mss')
 
 if __name__=='__main__':
     t_start=time.time()
