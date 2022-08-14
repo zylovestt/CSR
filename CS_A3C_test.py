@@ -12,16 +12,16 @@ import os
 np.random.seed(1)
 torch.manual_seed(0)
 LR=1e-4
-NUM_EPISODES=10
-ENV_STEPS=500
+NUM_EPISODES=400
+ENV_STEPS=50
 MAX_STEPS=50
 NUM_PROCESSINGS=8
-NUM_ENVS=1 
+NUM_ENVS=4
 QUEUE_SIZE=NUM_PROCESSINGS
-TRAIN_BATCH=1
+TRAIN_BATCH=2
 NUM_PROCESSORS=10
 MAXNUM_TASKS=10
-BATCH_SIZE=1
+BATCH_SIZE=NUM_ENVS*4
 GAMMA=0.98
 EPS=1e-8
 CYCLSES=10
@@ -79,7 +79,7 @@ lams['C']=1*1e-1
 bases={x:1 for x in z}
 
 env_c=CS_ENV.CSENV(pro_dics,MAXNUM_TASKS,task_dics,
-        job_dic,loc_config,lams,ENV_STEPS,bases,bases,SEEDS[0][0],TSEED,reset_states=False,cut_states=True,init_seed=ISEED)
+        job_dic,loc_config,lams,ENV_STEPS,bases,bases,SEEDS[0][0],TSEED,reset_states=True,cut_states=False,init_seed=ISEED)
 #print('1env_c',env_c.processors.pros[0].pro_dic['p'])
 state=env_c.reset()
 W=(state[0].shape,state[1].shape)
@@ -108,7 +108,7 @@ def data_func(proc_name,net,train_queue,id):
     ts_time=time.time()
 
     f_env=lambda x:CS_ENV.CSENV(pro_dics,MAXNUM_TASKS,task_dics,
-        job_dic,loc_config,lams,ENV_STEPS,bases,bases_fm,SEEDS[id][x],TSEED,False,True,ISEED)
+        job_dic,loc_config,lams,ENV_STEPS,bases,bases_fm,SEEDS[id][x],TSEED,True,False,ISEED)
 
     '''input_shape,num_subtasks,weights,gamma,device,clip_grad,beta,n_steps,mode,labda,proc_name'''
     worker=AC.ActorCritic_Double_softmax(W,MAXNUM_TASKS,1,GAMMA,DEVICE,
@@ -179,7 +179,7 @@ if __name__=='__main__':
     train_queue=mp.Queue(QUEUE_SIZE)
     #net=AGENT_NET.DoubleNet_softmax(W,MAXNUM_TASKS).to(DEVICE)
     net=AGENT_NET.DoubleNet_softmax_simple(W,MAXNUM_TASKS,TANH).to(DEVICE)
-    #net.load_state_dict(torch.load("../data/CS_A3C_model_parameter.pkl"))
+    net.load_state_dict(torch.load("../data/CS_A3C_model_parameter.pkl"))
     net.share_memory()
     optimizer=torch.optim.NAdam(net.parameters(),lr=LR,eps=EPS)
     

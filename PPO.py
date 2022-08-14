@@ -638,7 +638,7 @@ class PPO_softmax1:
 
 class PPO_softmax:
     ''' PPO算法,采用截断方式 '''
-    def __init__(self,input_shape:tuple,num_subtasks,weights,gamma,device,clip_grad,lmbda,epochs,eps,beta,net,optim,cut):
+    def __init__(self,input_shape:tuple,num_subtasks,weights,gamma,device,clip_grad,lmbda,epochs,eps,beta,net,optim,cut,norm):
         self.writer=SummaryWriter(comment='PPO')
         self.step=0
         self.agent=net
@@ -657,15 +657,58 @@ class PPO_softmax:
         self.device = device
         self.beta=beta
         self.cut=cut
+        self.norm=self.F_norm(norm)
+    
+    def F_norm(self,norm):
+        def mean_std_all(state):
+            u=state[0][:,:,:,:-self.num_subtasks]
+            for i in u:
+                i[:]=(i-i.mean())/i.std()
+            for i in state[1]:
+                i[:]=(i-i.mean())/i.std()
+        
+        def mean_std_single(state):
+            u=state[0][:,:,:,:-self.num_subtasks]
+            for i in u:
+                for j in i[0]:
+                    j[:]=(j-j.mean())/j.std()
+            for i in state[1]:
+                i[:]=(i-i.mean())/i.std()
+        
+        def low_high_all(state):
+            u=state[0][:,:,:,:-self.num_subtasks]
+            for i in u:
+                i[:]=(i-torch.min(i))/(torch.max(i)-torch.min(i))
+            for i in state[1]:
+                i[:]=(i-torch.min(i))/(torch.max(i)-torch.min(i))
+        
+        def low_high_single(state):
+            u=state[0][:,:,:,:-self.num_subtasks]
+            for i in u:
+                for j in i[0]:
+                    j[:]=(j-torch.min(i))/(torch.max(j)-torch.min(j))
+            for i in state[1]:
+                i[:]=(i-torch.min(i))/(torch.max(i)-torch.min(i))
+        
+        if norm=='msa':
+            return mean_std_all
+        if norm=='mss':
+            return mean_std_single
+        if norm=='lha':
+            return low_high_all
+        if norm=='lhs':
+            return low_high_single
+        return lambda x:x
 
     def take_action(self, state):
         F=lambda x:torch.tensor(x,dtype=torch.float).to(self.device)
         state=(F(state[0]),F(state[1]))
-        u=state[0][:,:,:,:-self.num_subtasks]
+        '''u=state[0][:,:,:,:-self.num_subtasks]
         for i in u:
             i[:]=(i-i.mean())/i.std()
         for i in state[1]:
-            i[:]=(i-i.mean())/i.std()
+            i[:]=(i-i.mean())/i.std()'''
+        self.norm(state)
         (probs_subtasks_orginal,probs_prior_orginal),_=self.agent(state)
         action_subtasks=[torch.distributions.Categorical(logits=x).sample().item()
             for x in probs_subtasks_orginal]
@@ -686,29 +729,32 @@ class PPO_softmax:
     def update(self, transition_dict):
         F=lambda x:torch.tensor(x,dtype=torch.float).to(self.device)
         states=tuple(F(np.concatenate([x[i] for x in transition_dict['states']],0)) for i in range(len(transition_dict['states'][0])))
-        u=states[0][:,:,:,:-self.num_subtasks]
+        '''u=states[0][:,:,:,:-self.num_subtasks]
         for i in u:
             i[:]=(i-i.mean())/i.std()
         for i in states[1]:
-            i[:]=(i-i.mean())/i.std()
+            i[:]=(i-i.mean())/i.std()'''
+        self.norm(states)
         actions=tuple(F(np.vstack([x[i] for x in transition_dict['actions']])).type(torch.int64) for i in range(len(transition_dict['actions'][0])))
 
         rewards=F(transition_dict['rewards']).view(-1,1)
         next_states=tuple(F(np.concatenate([x[i] for x in transition_dict['next_states']],0)) for i in range(len(transition_dict['states'][0])))
-        u=next_states[0][:,:,:,:-self.num_subtasks]
+        '''u=next_states[0][:,:,:,:-self.num_subtasks]
         for i in u:
             i[:]=(i-i.mean())/i.std()
         for i in next_states[1]:
-            i[:]=(i-i.mean())/i.std()
+            i[:]=(i-i.mean())/i.std()'''
+        self.norm(next_states)
         overs=F(transition_dict['overs']).view(-1,1)
+        dones=transition_dict['dones']
 
         all_states=tuple(torch.concat((states[i][0:1],next_states[i])) for i in range(2))
         temp=self.agent(all_states)[1]
         td_target = rewards + self.gamma * temp[1:] * (1 - overs)
         
         td_delta = td_target - temp[:-1]
-        advantage = rl_utils.compute_advantage(self.gamma, self.lmbda,
-                                               td_delta.cpu()).to(self.device)
+        #advantage = rl_utils.compute_advantage(self.gamma, self.lmbda,td_delta.cpu()).to(self.device)
+        advantage = rl_utils.compute_advantage_batch(self.gamma, self.lmbda,td_delta.cpu(),dones).to(self.device)
         #advantage=(advantage-advantage.mean())/advantage.std()
         #td_target=advantage.view(-1,1)+temp[:-1]                                               
         old_log_probs = self.calculate_probs_log(self.agent(states)[0],actions).detach()

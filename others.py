@@ -29,3 +29,4 @@ def mynewton_2(fx,x,u,error_max=1e-2):
         x+=s
         s=stepx(x)
     return x
+    

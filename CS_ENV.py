@@ -264,33 +264,15 @@ class CSENV:
     def set_train_mode(self):
         self.train=True
 
-    '''def reset0(self):
-        self.over=0
-        self.done=0
-        self.num_steps=0
-        if self.train:
-            np.random.seed(self.seed[self.seedid%len(self.seed)])
-            self.seedid+=1
-        else:
-            np.random.seed(self.test_seed[self.test_id%len(self.test_seed)])
-            self.test_id+=1
-        self.processors=PROCESSORS(self.pro_configs)
-        self.job=JOB(self.maxnum_tasks,self.task_configs,self.job_config)
-        return self.send()'''
-
     def reset(self):
         self.over=0
         self.done=0
         self.num_steps=0
-        if self.train:
-            np.random.seed(self.seed[self.seedid%len(self.seed)])
-            self.seedid+=1
-        else:
-            np.random.seed(self.test_seed[self.test_id%len(self.test_seed)])
-            self.test_id+=1
         if self.reset_states:
             self.processors=PROCESSORS(self.pro_configs)
-            self.job=JOB(self.maxnum_tasks,self.task_configs,self.job_config)
+            #self.job=JOB(self.maxnum_tasks,self.task_configs,self.job_config)
+            self.job.job_index=0
+            self.job.tin=0
         else:
             self.job.job_index=0
             self.job.tin=0
@@ -304,6 +286,12 @@ class CSENV:
                 pro.t=0
                 pro.pro_dic['twe']=0
                 pro.pro_dic['ler']=0
+        if self.train:
+            np.random.seed(self.seed[self.seedid%len(self.seed)])
+            self.seedid+=1
+        else:
+            np.random.seed(self.test_seed[self.test_id%len(self.test_seed)])
+            self.test_id+=1
         return self.send()
     
     def step(self,action:np.ndarray):
@@ -315,7 +303,7 @@ class CSENV:
         self.num_steps+=1
         if self.num_steps>=self.maxnum_episode:
             self.done=1
-            print(str(self.name)+' done')
+            #print(str(self.name)+' done')
         if self.reset_step:
             l=['er','econs','rcons','B','p','g']
             for pro,pro_conf in zip(self.processors.pros,self.pro_configs):
