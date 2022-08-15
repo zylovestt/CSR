@@ -80,15 +80,17 @@ def train_on_policy_agent(env, agent, num_episodes,max_steps,cycles,T_cycles=tor
     writer.close()
     return return_list
 
-def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,cycles,T_cycles=torch.inf,T_max=0,print_steps=False,pre_epochs=100,device='cuda',reps=1e-1,change_optim=10000,lr=1e-4,step_base=1):
+def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,cycles,T_cycles=torch.inf,T_max=0,print_steps=False,pre_epochs=100,device='cuda',reps=1e-1,change_optim=10000,lr=1e-4,step_base=1,save_name=None):
     states_orgin=[]
     done=False
     state = env.reset()
     for _ in range(pre_epochs):
         action = agent.take_action(state)
-        next_state = env.step(action)[0]
+        next_state, _, done, _, _ = env.step(action)
         states_orgin.append(state)
         state = next_state
+        if done:
+            state=env.reset()
     F=lambda x:torch.tensor(x,dtype=torch.float).to(device)
     states=tuple(F(np.concatenate([x[i] for x in states_orgin],0)) for i in range(len(states_orgin[0])))
     mean,std=[],[]
@@ -109,6 +111,7 @@ def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,
     state = env.reset()
     episode_return = 0
     i_episode=0
+    a_max=-1e100
     k=0
     while i_episode < num_episodes:
         transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': [], 'overs': []}
@@ -124,8 +127,8 @@ def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,
                 writer.add_scalar(tag='pro_loc-'+str(i),scalar_value=(pro.cal_squard_d(pro.t))**0.5,global_step=frame_idx)
                 writer.add_scalar(tag='pro_num_tasks-'+str(i),scalar_value=(action[0]==i).sum(),global_step=frame_idx)
 
-            #print(state[1])
-            #print(action[0])
+            print(state[1])
+            print(action[0])
 
             t1=[pro.pro_dic['twe'] for pro in env.processors.pros]
             next_state, reward, done, over, _ = env.step(action)
@@ -134,10 +137,10 @@ def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,
                 if a and a==b:
                     print('wrong_env')
 
-            '''for pro in env.processors.pros:
+            for pro in env.processors.pros:
                 print('twe',pro.pro_dic['twe'])
             for pro in env.processors.pros:
-                print('ler',pro.pro_dic['ler'])'''
+                print('ler',pro.pro_dic['ler'])
 
             transition_dict['states'].append(state)
             transition_dict['actions'].append(action)
@@ -157,8 +160,12 @@ def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,
                 test_reward=model_test(env,agent,10,recored=False)
                 print('episode:{}, test_reward:{}'.format(i_episode,test_reward[0]))
                 writer.add_scalar('test_reward',test_reward[0],i_episode)
-                print('episode:{}, reward:{}'.format(i_episode,np.mean(return_list[-cycles:])))
-                return_cycle_list.append(np.mean(return_list[-cycles:]))
+                a=np.mean(return_list[-cycles:])
+                print('episode:{}, reward:{}'.format(i_episode,a))
+                if test_reward[0]>a_max:
+                    a_max=test_reward[0]
+                    torch.save(agent.agent.state_dict(), '../data/CS_'+save_name+'_model_parameter.pkl')
+                return_cycle_list.append(a)
                 if len(return_cycle_list)>2 and (return_cycle_list[-1]-return_cycle_list[-2])>0 and (return_cycle_list[-1]-return_cycle_list[-2])/(return_cycle_list[-2]-return_cycle_list[-3])<reps:
                     agent.beta/=step_base
                     try:
@@ -172,7 +179,7 @@ def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,
                         change_finish=True
 
             state = env.reset()
-            done = False
+            #done = False
             episode_return = 0
         if k%T_cycles==0 and max_steps<T_max:
             max_steps+=1

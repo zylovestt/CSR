@@ -89,13 +89,14 @@ class PROCESSOR:
         twe=max(twe-tp,0)
         Q,finish=0,True
         for i in range(len(te)):
-            if np.random.rand()>self.pro_dic['F']:
-                self.UExe+=1
-                finish=False
-            else:
-                Q+=self.pro_dic['Q']()
-                self.Nk+=1
-                self.Exe+=1
+            if task['ez'][0]:
+                if np.random.rand()>self.pro_dic['F']:
+                    self.UExe+=1
+                    finish=False
+                else:
+                    Q+=self.pro_dic['Q']()
+                    self.Nk+=1
+                    self.Exe+=1
             twe+=te[i]
             twr=max(ler-te[i],0)
             t=tin+twe+twr
@@ -103,12 +104,13 @@ class PROCESSOR:
             ler=twr+tr
         self.pro_dic['twe']=twe
         self.pro_dic['ler']=ler
-        self.cal_PF()
-        Q*=sigma
-        self.sum_Aq+=Q
-        self.cal_Aq()
-        if task['ez'][0] and twe+ler==0:
-            print('t_here!')
+        if task['ez'][0]:
+            self.cal_PF()
+            Q*=sigma
+            self.sum_Aq+=Q
+            self.cal_Aq()
+            if twe+ler==0:
+                print('t_here!')
         return Q,twe+ler,np.sum(te)*self.pro_dic['econs']+np.sum(tr)*self.pro_dic['rcons'],finish
     
     def cal_tr(self,rz,t):
@@ -322,8 +324,8 @@ class CSENV:
         if self.change_prob:
             l=['er','econs','rcons','B','p','g']
             for pro,pro_conf in zip(self.processors.pros,self.pro_configs):
-                if not pro.pro_dic['ler'] and not pro.pro_dic['twe'] and np.random.random()<self.change_prob:
-                    #print('change')
+                if not pro.pro_dic['ler'] and not pro.pro_dic['twe'] and np.random.random()<self.change_prob and pro.Exe+pro.UExe:
+                    print('change')
                     for key in l:
                         pro.pro_dic[key]=pro_conf[key]()
                         pro.Exe=0

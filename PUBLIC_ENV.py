@@ -70,7 +70,7 @@ lams['C']=1*1e-1
 bases={x:1 for x in z}
 
 env_c=CS_ENV.CSENV(pro_dics,maxnum_tasks,task_dics,
-        job_dic,loc_config,lams,env_steps,bases,bases,seed,tseed,reset_states=False,init_seed=iseed,change_prob=0.0)
+        job_dic,loc_config,lams,env_steps,bases,bases,seed,tseed,reset_states=False,init_seed=iseed,change_prob=0.1)
 
 r_agent=CS_ENV.RANDOM_AGENT(maxnum_tasks)
 model_test(env_c,r_agent,10,recored=False)
@@ -86,12 +86,14 @@ for key in env_c.bases:
     env_c.tarb_dic[key+'b']=[]
 bases_fm=env_c.bases_fm
 
-env_c.cut_states=True
+if env_c.reset_states:
+    env_c.cut_states=False
+else:
+    env_c.cut_states=True
 state=env_c.reset()
 W=(state[0].shape,state[1].shape)
 net=AGENT_NET.DoubleNet_softmax_simple(W,maxnum_tasks,tanh,depart=True).to(device)
 optim=torch.optim.NAdam(net.parameters(),lr=lr,eps=1e-8)
-#optim=torch.optim.SGD(net.parameters(),lr=lr,momentum=0.9)
 
 def public_test(agent):
     print('start_test'+'#'*60)
