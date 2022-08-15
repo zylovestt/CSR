@@ -356,7 +356,7 @@ class DoubleNet_softmax_simple(nn.Module):
         self.num_attributes=input_shape[0][-1]
         self.num_subtasks=num_subtasks
         self.depart=depart
-        hs=256
+        hs=128
         self.base_row_p=nn.Conv2d(1,hs,kernel_size=(1,input_shape[0][-1]),stride=1)
         self.base_col_p=nn.Conv2d(1,hs,kernel_size=(input_shape[0][2],1),stride=1)
 
@@ -368,10 +368,10 @@ class DoubleNet_softmax_simple(nn.Module):
         self.fc_p=nn.Sequential(
             nn.PReLU(),
             nn.Linear(conv_out_size,hs),
-            nn.PReLU(),
-            nn.Linear(hs,hs),
-            nn.PReLU(),
-            nn.Linear(hs,hs),
+            #nn.PReLU(),
+            #nn.Linear(hs,hs),
+            #nn.PReLU(),
+            #nn.Linear(hs,hs),
             nn.PReLU(),
             nn.Linear(hs,hs),
             nn.PReLU(),
@@ -386,10 +386,10 @@ class DoubleNet_softmax_simple(nn.Module):
             F=lambda x,y:nn.Sequential(
                 nn.PReLU(),
                 nn.Linear(x,hs),
+                #nn.PReLU(),
+                #nn.Linear(hs,hs),
                 nn.PReLU(),
-                nn.Linear(x,hs),
-                nn.PReLU(),
-                nn.Linear(x,hs),
+                nn.Linear(hs,hs),
                 nn.PReLU(),
                 nn.Linear(hs,y),
                 nn.Tanh())
@@ -397,10 +397,10 @@ class DoubleNet_softmax_simple(nn.Module):
             F=lambda x,y:nn.Sequential(
                 nn.PReLU(),
                 nn.Linear(x,hs),
+                #nn.PReLU(),
+                #nn.Linear(hs,hs),
                 nn.PReLU(),
-                nn.Linear(x,hs),
-                nn.PReLU(),
-                nn.Linear(x,hs),
+                nn.Linear(hs,hs),
                 nn.PReLU(),
                 nn.Linear(hs,y))
         self.critic_out=nn.Sequential(

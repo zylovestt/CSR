@@ -107,7 +107,7 @@ class PROCESSOR:
         Q*=sigma
         self.sum_Aq+=Q
         self.cal_Aq()
-        if twe+ler==0:
+        if task['ez'][0] and twe+ler==0:
             print('t_here!')
         return Q,twe+ler,np.sum(te)*self.pro_dic['econs']+np.sum(tr)*self.pro_dic['rcons'],finish
     
@@ -125,6 +125,7 @@ class PROCESSORS:
     
     def __call__(self,tin:float,tasks:dict,action:np.ndarray,womiga:float,sigma:float):
         for i,rz in enumerate(tasks['rz']):
+            if not rz:
                 break
         num_tasks=i if not rz else i+1
         tasks['ez']=tasks['ez'][:num_tasks]
@@ -146,6 +147,9 @@ class PROCESSORS:
                 Q+=Q1
                 task_time=max(task_time,task_time1)
                 cons+=cons1
+            else:
+                task['ez'],task['rz']=[0],[0]
+                pro(tin,task,sigma)
         if task_time==0:
             print('ta_here!')
         dic={}
@@ -174,6 +178,7 @@ class JOB:
         self.tin+=self.job_config['time']()
         womiga=self.job_config['womiga']()
         sigma=self.job_config['sigma']()
+        #print(tasks)
         return self.tin,tasks,womiga,sigma
 
 class CSENV:
@@ -318,7 +323,7 @@ class CSENV:
             l=['er','econs','rcons','B','p','g']
             for pro,pro_conf in zip(self.processors.pros,self.pro_configs):
                 if not pro.pro_dic['ler'] and not pro.pro_dic['twe'] and np.random.random()<self.change_prob:
-                    print('change')
+                    #print('change')
                     for key in l:
                         pro.pro_dic[key]=pro_conf[key]()
                         pro.Exe=0

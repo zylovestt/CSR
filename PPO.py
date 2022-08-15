@@ -638,7 +638,7 @@ class PPO_softmax1:
 
 class PPO_softmax:
     ''' PPO算法,采用截断方式 '''
-    def __init__(self,input_shape:tuple,num_subtasks,weights,gamma,device,clip_grad,lmbda,epochs,eps,beta,net,optim,cut,norm):
+    def __init__(self,input_shape:tuple,num_subtasks,weights,gamma,device,clip_grad,lmbda,epochs,eps,beta,net,optim,cut,norm,std=[1,1],mean=[0,0],state_beta=0.9,reward_one=False,fm_eps=1e-8):
         self.writer=SummaryWriter(comment='PPO')
         self.step=0
         self.agent=net
@@ -658,6 +658,11 @@ class PPO_softmax:
         self.beta=beta
         self.cut=cut
         self.norm=self.F_norm(norm)
+        self.std=std
+        self.mean=mean
+        self.reward_one=reward_one
+        self.state_beta=state_beta
+        self.fm_eps=fm_eps
     
     def F_norm(self,norm):
         def mean_std_all(state):
@@ -690,6 +695,11 @@ class PPO_softmax:
             for i in state[1]:
                 i[:]=(i-torch.min(i))/(torch.max(i)-torch.min(i))
         
+        def state_one(state):
+            u=state[0][:,:,:,:-self.num_subtasks]
+            u[:]=(u-self.mean[0])/(self.std[0]+self.fm_eps)
+            state[1][:]=(state[1]-self.mean[1])/(self.std[1]+self.fm_eps)
+        
         if norm=='msa':
             return mean_std_all
         if norm=='mss':
@@ -698,6 +708,8 @@ class PPO_softmax:
             return low_high_all
         if norm=='lhs':
             return low_high_single
+        if norm=='sto':
+            return state_one
         return lambda x:x
 
     def take_action(self, state):
@@ -724,6 +736,11 @@ class PPO_softmax:
     def update(self, transition_dict):
         F=lambda x:torch.tensor(x,dtype=torch.float).to(self.device)
         states=tuple(F(np.concatenate([x[i] for x in transition_dict['states']],0)) for i in range(len(transition_dict['states'][0])))
+        if self.norm=='sto':
+            self.mean[0][:]=self.state_beta*self.mean[0]+(1-self.state_beta)*states[0][:,:,:,:-self.num_subtasks].mean(dim=0)
+            self.std[0][:]=self.state_beta*self.std[0]+(1-self.state_beta)*states[0][:,:,:,:-self.num_subtasks].std(dim=0)
+            self.mean[1][:]=self.state_beta*self.mean+(1-self.state_beta)*states[1].mean(dim=0)
+            self.std[1][:]=self.state_beta*self.std+(1-self.state_beta)*states[1].std(dim=0)
         self.norm(states)
         actions=tuple(F(np.vstack([x[i] for x in transition_dict['actions']])).type(torch.int64) for i in range(len(transition_dict['actions'][0])))
 
@@ -740,7 +757,8 @@ class PPO_softmax:
         td_delta = td_target - temp[:-1]
         #advantage = rl_utils.compute_advantage(self.gamma, self.lmbda,td_delta.cpu()).to(self.device)
         advantage = rl_utils.compute_advantage_batch(self.gamma, self.lmbda,td_delta.cpu(),dones).to(self.device)
-        #advantage=(advantage-advantage.mean())/advantage.std()
+        if self.reward_one:
+            advantage=(advantage)/(advantage.std()+self.fm_eps)
         #td_target=advantage.view(-1,1)+temp[:-1]                                               
         old_log_probs = self.calculate_probs_log(self.agent(states)[0],actions).detach()
         flag=0

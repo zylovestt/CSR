@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import collections
 import ENV_AGENT
+import CS_ENV
 import random
 from TEST import model_test
 import time
@@ -64,7 +65,7 @@ def train_on_policy_agent(env, agent, num_episodes,max_steps,cycles,T_cycles=tor
             if i_episode % cycles == 0:
                 print('speed:{}'.format(frame_idx/(time.time()-ts_time)))
                 frame_idx,ts_time=0,time.time()
-                test_reward=model_test(env,agent,10,recored=False)
+                test_reward=model_test(env,agent,3,recored=False)
                 print('episode:{}, test_reward:{}'.format(i_episode,test_reward[0]))
                 writer.add_scalar('test_reward',test_reward[0],i_episode)
                 print('episode:{}, reward:{}'.format(i_episode,np.mean(return_list[-cycles:])))
@@ -79,11 +80,31 @@ def train_on_policy_agent(env, agent, num_episodes,max_steps,cycles,T_cycles=tor
     writer.close()
     return return_list
 
-def train_on_policy_agent_batch(env, agent, num_episodes,max_steps,cycles,T_cycles=torch.inf,T_max=0,print_steps=False):
+def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,cycles,T_cycles=torch.inf,T_max=0,print_steps=False,pre_epochs=100,device='cuda',reps=1e-1,change_optim=10000,lr=1e-4,step_base=1):
+    states_orgin=[]
+    done=False
+    state = env.reset()
+    for _ in range(pre_epochs):
+        action = agent.take_action(state)
+        next_state = env.step(action)[0]
+        states_orgin.append(state)
+        state = next_state
+    F=lambda x:torch.tensor(x,dtype=torch.float).to(device)
+    states=tuple(F(np.concatenate([x[i] for x in states_orgin],0)) for i in range(len(states_orgin[0])))
+    mean,std=[],[]
+    mean.append(states[0][:,:,:,:-agent.num_subtasks].mean(dim=0))
+    std.append(states[0][:,:,:,:-agent.num_subtasks].std(dim=0))
+    mean.append(states[1].mean(dim=0))
+    std.append(states[1].std(dim=0))
+    agent.mean,agent.std=mean,std
+
     writer=agent.writer
     frame_idx=0
+    num_changes=0
+    change_finish=False
     ts_time=time.time()
     return_list = []
+    return_cycle_list=[]
     done=False
     state = env.reset()
     episode_return = 0
@@ -97,7 +118,27 @@ def train_on_policy_agent_batch(env, agent, num_episodes,max_steps,cycles,T_cycl
             step+=1
             frame_idx+=1
             action = agent.take_action(state)
+            for i,pro in enumerate(env.processors.pros):
+                writer.add_scalar(tag='pro_twe-'+str(i),scalar_value=pro.pro_dic['twe'],global_step=frame_idx)
+                writer.add_scalar(tag='pro_ler-'+str(i),scalar_value=pro.pro_dic['ler'],global_step=frame_idx)
+                writer.add_scalar(tag='pro_loc-'+str(i),scalar_value=(pro.cal_squard_d(pro.t))**0.5,global_step=frame_idx)
+                writer.add_scalar(tag='pro_num_tasks-'+str(i),scalar_value=(action[0]==i).sum(),global_step=frame_idx)
+
+            #print(state[1])
+            #print(action[0])
+
+            t1=[pro.pro_dic['twe'] for pro in env.processors.pros]
             next_state, reward, done, over, _ = env.step(action)
+            t2=[pro.pro_dic['twe'] for pro in env.processors.pros]
+            for a,b in zip(t1,t2):
+                if a and a==b:
+                    print('wrong_env')
+
+            '''for pro in env.processors.pros:
+                print('twe',pro.pro_dic['twe'])
+            for pro in env.processors.pros:
+                print('ler',pro.pro_dic['ler'])'''
+
             transition_dict['states'].append(state)
             transition_dict['actions'].append(action)
             transition_dict['next_states'].append(next_state)
@@ -117,6 +158,19 @@ def train_on_policy_agent_batch(env, agent, num_episodes,max_steps,cycles,T_cycl
                 print('episode:{}, test_reward:{}'.format(i_episode,test_reward[0]))
                 writer.add_scalar('test_reward',test_reward[0],i_episode)
                 print('episode:{}, reward:{}'.format(i_episode,np.mean(return_list[-cycles:])))
+                return_cycle_list.append(np.mean(return_list[-cycles:]))
+                if len(return_cycle_list)>2 and (return_cycle_list[-1]-return_cycle_list[-2])>0 and (return_cycle_list[-1]-return_cycle_list[-2])/(return_cycle_list[-2]-return_cycle_list[-3])<reps:
+                    agent.beta/=step_base
+                    try:
+                        agent.eps*=step_base
+                    except:
+                        pass
+                    reps/=step_base
+                    num_changes+=1
+                    if not change_finish and num_changes==change_optim:
+                        agent.optimizer=torch.optim.SGD(agent.agent.parameters(),lr=lr,momentum=0.9)
+                        change_finish=True
+
             state = env.reset()
             done = False
             episode_return = 0

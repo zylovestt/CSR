@@ -10,11 +10,11 @@ torch.manual_seed(0)
 
 lr = 1*1e-4
 num_episodes = 100
-gamma = 0.98
+gamma = 0.95
 num_pros=10
 maxnum_tasks=10
 env_steps=100
-max_steps=10
+max_steps=20
 tanh=True
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 iseed=1
@@ -25,12 +25,12 @@ np.set_printoptions(2)
 pro_dic={}
 pro_dic['F']=(0.7,0.99)
 pro_dic['Q']=(0.7,0.99)
-pro_dic['er']=(0.1,0.9)
-pro_dic['econs']=(0.1,0.9)
-pro_dic['rcons']=(0.1,0.9)
-pro_dic['B']=(0.1,0.9)
-pro_dic['p']=(0.1,0.9)
-pro_dic['g']=(0.1,0.9)
+pro_dic['er']=(0.1,0.9*100)
+pro_dic['econs']=(0.1,0.9*100)
+pro_dic['rcons']=(0.1,0.9*100)
+pro_dic['B']=(0.1,0.9*100)
+pro_dic['p']=(0.1,0.9*100)
+pro_dic['g']=(0.1,0.9*100)
 def fx():
     h=np.random.random()
     def g(x):
@@ -51,8 +51,8 @@ pro_dic['twe']=(0,0)
 pro_dic['ler']=(0,0)
 pro_dics=[CS_ENV.fpro_config(pro_dic) for _ in range(num_pros)]
 task_dic={}
-task_dic['ez']=(0.5,1)
-task_dic['rz']=(0.5,1)
+task_dic['ez']=(0.5,1*100)
+task_dic['rz']=(0.5*1e-4*100,1e-4*100)
 task_dics=[CS_ENV.ftask_config(task_dic) for _ in range(maxnum_tasks)]
 job_d={}
 job_d['time']=(0.1,0.3)
@@ -70,10 +70,10 @@ lams['C']=1*1e-1
 bases={x:1 for x in z}
 
 env_c=CS_ENV.CSENV(pro_dics,maxnum_tasks,task_dics,
-        job_dic,loc_config,lams,env_steps,bases,bases,seed,tseed,reset_states=False,init_seed=iseed,change_prob=0.1)
+        job_dic,loc_config,lams,env_steps,bases,bases,seed,tseed,reset_states=False,init_seed=iseed,change_prob=0.0)
 
 r_agent=CS_ENV.RANDOM_AGENT(maxnum_tasks)
-model_test(env_c,r_agent,10)
+model_test(env_c,r_agent,10,recored=False)
 
 for key in env_c.bases:
     env_c.tar_dic[key].sort()
@@ -86,17 +86,17 @@ for key in env_c.bases:
     env_c.tarb_dic[key+'b']=[]
 bases_fm=env_c.bases_fm
 
-env_c.cut_states=False
+env_c.cut_states=True
 state=env_c.reset()
 W=(state[0].shape,state[1].shape)
 net=AGENT_NET.DoubleNet_softmax_simple(W,maxnum_tasks,tanh,depart=True).to(device)
 optim=torch.optim.NAdam(net.parameters(),lr=lr,eps=1e-8)
+#optim=torch.optim.SGD(net.parameters(),lr=lr,momentum=0.9)
 
 def public_test(agent):
     print('start_test'+'#'*60)
     tl_0=model_test(env_c,agent,10)
     print('#'*20)
-
     env_c.cut_states=False
     torch.manual_seed(0)
     print(env_c.test_seed[:10])

@@ -788,7 +788,7 @@ class ActorCritic_Double_softmax1:
         return self.cal_(r,0,self.gamma*self.labda)
 
 class ActorCritic_Double_softmax:
-    def __init__(self,input_shape,num_subtasks,weights,gamma,device,clip_grad,beta,n_steps,mode,labda,proc_name,optimizer=None,net=None,norm=None):
+    def __init__(self,input_shape,num_subtasks,weights,gamma,device,clip_grad,beta,n_steps,mode,labda,proc_name,optimizer=None,net=None,norm=None,reward_one=False,fm_eps=1e-8):
         self.writer=SummaryWriter(comment='A3C'+proc_name)
         self.step=0
         self.num_processors=input_shape[0][2]
@@ -810,6 +810,10 @@ class ActorCritic_Double_softmax:
         self.agent=net
         self.optimizer=optimizer
         self.norm=self.F_norm(norm)
+        self.reward_one=reward_one
+        self.fm_eps=fm_eps
+        self.mean=[0,0]
+        self.std=[1,1]
     
     def F_norm(self,norm):
         def mean_std_all(state):
@@ -842,6 +846,11 @@ class ActorCritic_Double_softmax:
             for i in state[1]:
                 i[:]=(i-torch.min(i))/(torch.max(i)-torch.min(i))
         
+        def state_one(state):
+            u=state[0][:,:,:,:-self.num_subtasks]
+            u[:]=(u-self.mean[0])/(self.std[0]+self.fm_eps)
+            state[1][:]=(state[1]-self.mean[1])/(self.std[1]+self.fm_eps)
+        
         if norm=='msa':
             return mean_std_all
         if norm=='mss':
@@ -850,16 +859,13 @@ class ActorCritic_Double_softmax:
             return low_high_all
         if norm=='lhs':
             return low_high_single
+        if norm=='sto':
+            return state_one
         return lambda x:x
     
     def take_action(self,state):
         F=lambda x:torch.tensor(x,dtype=torch.float).to(self.device)
         state=(F(state[0]),F(state[1]))
-        '''u=state[0][:,:,:,:-self.num_subtasks]
-        for i in u:
-            i[:]=(i-i.mean())/i.std()
-        for i in state[1]:
-            i[:]=(i-i.mean())/i.std()'''
         self.norm(state)
         (probs_subtasks_orginal,probs_prior_orginal),_=self.agent(state)
         action_subtasks=[]
@@ -882,21 +888,16 @@ class ActorCritic_Double_softmax:
     def update(self, transition_dict:dict):
         F=lambda x:torch.tensor(x,dtype=torch.float).to(self.device)
         states=tuple(F(np.concatenate([x[i] for x in transition_dict['states']],0)) for i in range(len(transition_dict['states'][0])))
-        '''u=states[0][:,:,:,:-self.num_subtasks]
-        for i in u:
-            i[:]=(i-i.mean())/i.std()
-        for i in states[1]:
-            i[:]=(i-i.mean())/i.std()'''
+        if self.norm=='sto':
+            self.mean[0][:]=self.state_beta*self.mean[0]+(1-self.state_beta)*states[0][:,:,:,:-self.num_subtasks].mean(dim=0)
+            self.std[0][:]=self.state_beta*self.std[0]+(1-self.state_beta)*states[0][:,:,:,:-self.num_subtasks].std(dim=0)
+            self.mean[1][:]=self.state_beta*self.mean+(1-self.state_beta)*states[1].mean(dim=0)
+            self.std[1][:]=self.state_beta*self.std+(1-self.state_beta)*states[1].std(dim=0)
         self.norm(states)
         actions=tuple(F(np.vstack([x[i] for x in transition_dict['actions']])).type(torch.int64) for i in range(len(transition_dict['actions'][0])))
 
         rewards=F(transition_dict['rewards']).view(-1,1)
         next_states=tuple(F(np.concatenate([x[i] for x in transition_dict['next_states']],0)) for i in range(len(transition_dict['states'][0])))
-        '''u=next_states[0][:,:,:,:-self.num_subtasks]
-        for i in u:
-            i[:]=(i-i.mean())/i.std()
-        for i in next_states[1]:
-            i[:]=(i-i.mean())/i.std()'''
         self.norm(next_states)
         overs=F(transition_dict['overs']).view(-1,1)
         # 时序差分目标
@@ -907,6 +908,8 @@ class ActorCritic_Double_softmax:
         elif self.mode=='gce':
             F_td=self.cal_gce
         td_delta=F_td(rewards,states,next_states,overs)  # 时序差分误差
+        if self.reward_one:
+            td_delta[:]=td_delta/(td_delta.std()+self.fm_eps)
         td_target=td_delta+self.agent(states)[1]
         self.ac_loss.append(td_delta.mean().item())
         b_probs=self.agent(states)[0]
