@@ -6,7 +6,7 @@ from collections import OrderedDict,defaultdict
 EPS=1e-8
 rui=lambda u:(lambda:float(np.random.randint(u[0],u[1])))
 ruf=lambda u:(lambda:float(np.random.uniform(u[0],u[1])))
-PRO_STATE_NAMES=['er', 'econs', 'rcons', 'B', 'p', 'g', 'twe', 'ler', 'w', 'alpha','PF','Aq', 'x', 'y', 'vx','vy']
+PRO_STATE_NAMES=['twe', 'ler', 'er', 'econs', 'rcons', 'B', 'p', 'g',  'w', 'alpha','PF','Aq', 'x', 'y', 'vx','vy']
 
 def fpro_config(dic):
     config={}
@@ -119,12 +119,26 @@ class PROCESSOR:
                 (self.cal_squard_d(t)**(self.pro_dic['alpha']/2)
                 *self.pro_dic['w']**2))
         return rz/r
+    
+    def cal_avg_rr(self):
+        r=self.pro_dic['B']*np.log2(
+                1+self.pro_dic['p']*self.pro_dic['g']/
+                (2**(self.pro_dic['alpha']/2)
+                *self.pro_dic['w']**2))
+        return r
 
 class PROCESSORS:
-    def __init__(self,pro_configs:list):
+    def __init__(self,pro_configs:list,avg_reward=True):
         self.num_pros=len(pro_configs)
         self.pros=[PROCESSOR(pro_config) for pro_config in pro_configs]
-    
+        self.pros_er=1/np.array([pro.pro_dic['er'] for pro in self.pros]).sum().item()
+        self.pros_rr=1/np.array([pro.cal_avg_rr() for pro in self.pros]).sum().item()
+        self.pros_econs=np.array([pro.pro_dic['econs'] for pro in self.pros]).sum().item()
+        self.pros_rcons=np.array([pro.pro_dic['rcons'] for pro in self.pros]).sum().item()
+        self.pros_Q=1/np.array([pro.pro_dic['Q']() for pro in self.pros]).sum().item()    #see,mybe change
+        self.pros_F=1/np.array([pro.pro_dic['F'] for pro in self.pros]).sum().item()
+        self.avg_reward=avg_reward
+
     def __call__(self,tin:float,tasks:dict,action:np.ndarray,womiga:float,sigma:float):
         for i,rz in enumerate(tasks['rz']):
             if not rz:
@@ -156,6 +170,17 @@ class PROCESSORS:
             print('ta_here!')
         dic={}
         dic['Q'],dic['T'],dic['C'],dic['F']=Q,task_time*womiga,cons,finish
+        if self.avg_reward:
+            tasks_ez=np.array(tasks['ez']).sum()
+            tasks_rz=np.array(tasks['rz']).sum()
+            dic['Q']*=self.pros_Q
+            dic['F']*=self.pros_F
+            dic['C']*=(tasks_ez*self.pros_econs+tasks_rz*self.pros_rcons)
+            dic['T']*=(tasks_ez*self.pros_er+tasks_rz*self.pros_rr)
+        l_t=[]
+        for pro in self.pros:
+            l_t.append(pro.pro_dic['twe']+pro.pro_dic['ler'])
+        dic['B']=np.array(l_t).std()
         return dic
 
 class JOB:
@@ -187,7 +212,7 @@ class CSENV:
     name=0
     def __init__(self,pro_configs:list,maxnum_tasks:int,task_configs:list,job_config:dict,loc_config,
         lams:dict,maxnum_episode:int,bases:dict,bases_fm:dict,seed:list,test_seed:list,reset_states=False,
-        cut_states=False,init_seed=1,reset_step=False,change_prob=0):
+        cut_states=False,init_seed=1,reset_step=False,change_prob=0,send_type=1,time_steps=5,time_break=2):
         '''lams:Q,T,C,F'''
         self.name+=1
         self.init_seed=init_seed
@@ -205,11 +230,14 @@ class CSENV:
         self.tar_dic['T']=[]
         self.tar_dic['C']=[]
         self.tar_dic['F']=[]
+        self.tar_dic['B']=[]
         self.tarb_dic['Qb']=[]
         self.tarb_dic['Tb']=[]
         self.tarb_dic['Cb']=[]
         self.tarb_dic['Fb']=[]
+        self.tarb_dic['Bb']=[]
         self.sum_tar=[]
+        self.sum_test_tar=[]
         self.sum_tarb=[]
         self.maxnum_episode=maxnum_episode
         self.set_random_const=False
@@ -225,17 +253,23 @@ class CSENV:
         self.cut_states=cut_states
         self.reset_step=reset_step
         self.change_prob=change_prob
+        self.send_type=send_type
+        self.time_steps=time_steps
+        self.time_break=time_break
     
     def send(self):
+        if self.send_type==0:
+            return self.send0()
+        if self.send_type==1:
+            return self.send1()
+    
+    def send0(self):
         self.tin,self.tasks,self.womiga,self.sigma=self.job()
-        '''for i,rz in enumerate(self.tasks['rz']):
-            if not rz:
-                break'''
         task_loc=self.loc_config(self.processors.num_pros,self.job.maxnum_tasks)
         self.task_loc=task_loc
         pro_status=[]
         if not self.cut_states:
-            names=['er', 'econs', 'rcons', 'B', 'p', 'g', 'twe', 'ler', 'w', 'alpha']
+            names=['twe', 'ler','er', 'econs', 'rcons', 'B', 'p', 'g',  'w', 'alpha']
         else:
             names=['twe', 'ler']
         for pro in self.processors.pros:
@@ -251,21 +285,51 @@ class CSENV:
         task_status.extend([self.womiga,self.sigma])
         task_status=np.array(task_status).reshape(1,-1)
         return pro_status,task_status
+    
+    def send1(self):
+        self.tin,self.tasks,self.womiga,self.sigma=self.job()
+        task_loc=self.loc_config(self.processors.num_pros,self.job.maxnum_tasks)
+        self.task_loc=task_loc
+        F=lambda:np.empty((self.num_pros,self.maxnum_tasks))
+        ez_div_er=F()
+        ez_mul_econs=F()
+        rz_mul_rcons=F()
+        rz_div_B=F()
+        tr_t=np.empty((self.num_pros,self.time_steps))
+        for i in range(self.num_pros):
+            pro=self.processors.pros[i]
+            ez_div_er[i]=np.array(self.tasks['ez'])/pro.pro_dic['er']
+            ez_mul_econs[i]=np.array(self.tasks['ez'])/pro.pro_dic['econs']
+            rz_mul_rcons[i]=np.array(self.tasks['rz'])/pro.pro_dic['rcons']
+            rz_div_B[i]=np.array(self.tasks['rz'])/pro.pro_dic['B']
+            for j in range(tr_t.shape[1]):
+                tr_t[i,j]=pro.cal_tr(1,self.tin-self.time_break*j)
+
+        pro_status=[]
+        for pro in self.processors.pros:
+            items=[pro.pro_dic['twe'],pro.pro_dic['ler'],pro.PF,pro.Aq]
+            pro_status.append(items)
+        pro_status=np.concatenate((np.array(pro_status),ez_div_er,ez_mul_econs,rz_mul_rcons,rz_div_B,tr_t,task_loc),1).reshape(1,1,self.processors.num_pros,-1)
+        task_status=np.array([self.womiga,self.sigma]).reshape(1,-1)
+        return pro_status,task_status
 
     def accept(self,action:np.ndarray):
         choice_prob=np.prod(self.task_loc[action[0],range(self.maxnum_tasks)])
         if choice_prob<0.5:
             print(str(self.name)+' wrong_choice')
         R=self.processors(self.tin,self.tasks,action,self.womiga,self.sigma)
-        t,s=0,0
+        t,s,s_t=0,0,0
         for k,value in self.tar_dic.items():
             value.append(R[k])
-            t+=self.lams[k]*R[k]
             r=(self.bases[k]-R[k])/self.bases_fm[k]
             self.tarb_dic[k+'b'].append(r)
             s+=self.lams[k]*r
+            if not k=='B':
+                t+=self.lams[k]*R[k]
+                s_t+=self.lams[k]*r
         self.sum_tar.append(t)
         self.sum_tarb.append(s)
+        self.sum_test_tar.append(s_t)
 
     def set_test_mode(self):
         self.train=False
@@ -278,32 +342,32 @@ class CSENV:
         self.over=0
         self.done=0
         self.num_steps=0
-        if self.reset_states:
-            self.processors=PROCESSORS(self.pro_configs)
-            #self.job=JOB(self.maxnum_tasks,self.task_configs,self.job_config)
-            self.job.job_index=0
-            self.job.tin=0
-        else:
-            self.job.job_index=0
-            self.job.tin=0
-            np.random.seed(self.init_seed)
-            self.processors=PROCESSORS(self.pro_configs)
-            '''for pro in self.processors.pros:
-                pro.Exe=0
-                pro.UExe=0
-                pro.cal_PF()
-                pro.sum_Aq=0
-                pro.Nk=0
-                pro.cal_Aq()
-                pro.t=0
-                pro.pro_dic['twe']=0
-                pro.pro_dic['ler']=0'''
+
         if self.train:
             np.random.seed(self.seed[self.seedid%len(self.seed)])
             self.seedid+=1
         else:
             np.random.seed(self.test_seed[self.test_id%len(self.test_seed)])
             self.test_id+=1
+
+        if self.reset_states:
+            self.processors=PROCESSORS(self.pro_configs)
+            #self.job=JOB(self.maxnum_tasks,self.task_configs,self.job_config)
+            self.job.job_index=0
+            self.job.tin=0
+        else:
+            np.random.seed(self.init_seed)
+            self.processors=PROCESSORS(self.pro_configs)
+            self.job.job_index=0
+            self.job.tin=0
+
+        if self.train:
+            np.random.seed(self.seed[self.seedid%len(self.seed)])
+            self.seedid+=1
+        else:
+            np.random.seed(self.test_seed[self.test_id%len(self.test_seed)])
+            self.test_id+=1
+
         return self.send()
     
     def step(self,action:np.ndarray):
@@ -311,7 +375,7 @@ class CSENV:
         if self.train:
             reward=self.sum_tarb[-1]
         else:
-            reward=self.sum_tarb[-1]        #change
+            reward=self.sum_test_tar[-1]        #change
         self.num_steps+=1
         if self.num_steps>=self.maxnum_episode:
             self.done=1
@@ -445,7 +509,14 @@ if __name__=='__main__':
     A=state[0].reshape(num_pros,-1)
     A=np.around(A,2)
     l=list(np.arange(maxnum_tasks))
-    ls=['er', 'econs', 'rcons', 'B', 'p', 'g', 'twe', 'ler', 'w', 'alpha','PF','Aq', 'x', 'y', 'vx','vy']
+    #ls=['er', 'econs', 'rcons', 'B', 'p', 'g', 'twe', 'ler', 'w', 'alpha','PF','Aq', 'x', 'y', 'vx','vy']
+    names=['ez_div_er','ez_mul_econs','rz_mul_rcons','rz_div_B']
+    ls=['twe', 'ler','PF','Aq']
+    for name in names:
+        for i in range(maxnum_tasks):
+            ls.append(name+str(i))
+    for i in range(job_pros.time_steps):
+        ls.append('tr_t'+str(i))
     ls.extend(l)
     pd.DataFrame(A,columns=ls,index=['pro_1','pro_2','pro_3']).to_csv('sample.csv')
     rand_agent=RANDOM_AGENT(maxnum_tasks)

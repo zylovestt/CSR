@@ -657,6 +657,7 @@ class PPO_softmax:
         self.device = device
         self.beta=beta
         self.cut=cut
+        self.norm_mode=norm
         self.norm=self.F_norm(norm)
         self.std=std
         self.mean=mean
@@ -736,11 +737,11 @@ class PPO_softmax:
     def update(self, transition_dict):
         F=lambda x:torch.tensor(x,dtype=torch.float).to(self.device)
         states=tuple(F(np.concatenate([x[i] for x in transition_dict['states']],0)) for i in range(len(transition_dict['states'][0])))
-        if self.norm=='sto':
+        if self.norm_mode=='sto':
             self.mean[0][:]=self.state_beta*self.mean[0]+(1-self.state_beta)*states[0][:,:,:,:-self.num_subtasks].mean(dim=0)
             self.std[0][:]=self.state_beta*self.std[0]+(1-self.state_beta)*states[0][:,:,:,:-self.num_subtasks].std(dim=0)
-            self.mean[1][:]=self.state_beta*self.mean+(1-self.state_beta)*states[1].mean(dim=0)
-            self.std[1][:]=self.state_beta*self.std+(1-self.state_beta)*states[1].std(dim=0)
+            self.mean[1][:]=self.state_beta*self.mean[1]+(1-self.state_beta)*states[1].mean(dim=0)
+            self.std[1][:]=self.state_beta*self.std[1]+(1-self.state_beta)*states[1].std(dim=0)
         self.norm(states)
         actions=tuple(F(np.vstack([x[i] for x in transition_dict['actions']])).type(torch.int64) for i in range(len(transition_dict['actions'][0])))
 

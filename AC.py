@@ -788,7 +788,7 @@ class ActorCritic_Double_softmax1:
         return self.cal_(r,0,self.gamma*self.labda)
 
 class ActorCritic_Double_softmax:
-    def __init__(self,input_shape,num_subtasks,weights,gamma,device,clip_grad,beta,n_steps,mode,labda,proc_name,optimizer=None,net=None,norm=None,reward_one=False,fm_eps=1e-8):
+    def __init__(self,input_shape,num_subtasks,weights,gamma,device,clip_grad,beta,n_steps,mode,labda,proc_name,optimizer=None,net=None,norm=None,reward_one=False,fm_eps=1e-8,state_beta=0.9):
         self.writer=SummaryWriter(comment='A3C'+proc_name)
         self.step=0
         self.num_processors=input_shape[0][2]
@@ -809,7 +809,9 @@ class ActorCritic_Double_softmax:
         self.ac_loss=[]
         self.agent=net
         self.optimizer=optimizer
+        self.norm_mode=norm
         self.norm=self.F_norm(norm)
+        self.state_beta=state_beta
         self.reward_one=reward_one
         self.fm_eps=fm_eps
         self.mean=[0,0]
@@ -888,15 +890,18 @@ class ActorCritic_Double_softmax:
     def update(self, transition_dict:dict):
         F=lambda x:torch.tensor(x,dtype=torch.float).to(self.device)
         states=tuple(F(np.concatenate([x[i] for x in transition_dict['states']],0)) for i in range(len(transition_dict['states'][0])))
-        if self.norm=='sto':
+        if self.norm_mode=='sto':
             self.mean[0][:]=self.state_beta*self.mean[0]+(1-self.state_beta)*states[0][:,:,:,:-self.num_subtasks].mean(dim=0)
             self.std[0][:]=self.state_beta*self.std[0]+(1-self.state_beta)*states[0][:,:,:,:-self.num_subtasks].std(dim=0)
-            self.mean[1][:]=self.state_beta*self.mean+(1-self.state_beta)*states[1].mean(dim=0)
-            self.std[1][:]=self.state_beta*self.std+(1-self.state_beta)*states[1].std(dim=0)
+            self.mean[1][:]=self.state_beta*self.mean[1]+(1-self.state_beta)*states[1].mean(dim=0)
+            self.std[1][:]=self.state_beta*self.std[1]+(1-self.state_beta)*states[1].std(dim=0)
         self.norm(states)
         actions=tuple(F(np.vstack([x[i] for x in transition_dict['actions']])).type(torch.int64) for i in range(len(transition_dict['actions'][0])))
 
         rewards=F(transition_dict['rewards']).view(-1,1)
+        if self.reward_one:
+            #rewards[:]=(rewards-rewards.mean())/(rewards.std()+self.fm_eps)
+            rewards[:]=torch.clamp(rewards,-1,1)
         next_states=tuple(F(np.concatenate([x[i] for x in transition_dict['next_states']],0)) for i in range(len(transition_dict['states'][0])))
         self.norm(next_states)
         overs=F(transition_dict['overs']).view(-1,1)
@@ -908,10 +913,10 @@ class ActorCritic_Double_softmax:
         elif self.mode=='gce':
             F_td=self.cal_gce
         td_delta=F_td(rewards,states,next_states,overs)  # 时序差分误差
-        if self.reward_one:
-            td_delta[:]=td_delta/(td_delta.std()+self.fm_eps)
         td_target=td_delta+self.agent(states)[1]
         self.ac_loss.append(td_delta.mean().item())
+        if self.ac_loss[-1]<-15:
+            print('loss_too_big!')
         b_probs=self.agent(states)[0]
 
         s=0

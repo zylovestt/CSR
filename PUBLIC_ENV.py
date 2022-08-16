@@ -8,14 +8,14 @@ import AGENT_NET
 np.random.seed(1)
 torch.manual_seed(0)
 
-lr = 1*1e-4
+lr = 1*1e-5
 num_episodes = 100
 gamma = 0.95
 num_pros=10
 maxnum_tasks=10
 env_steps=100
 max_steps=20
-tanh=True
+tanh=False
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 iseed=1
 tseed=[np.random.randint(0,1000) for _ in range(1000)]
@@ -25,12 +25,12 @@ np.set_printoptions(2)
 pro_dic={}
 pro_dic['F']=(0.7,0.99)
 pro_dic['Q']=(0.7,0.99)
-pro_dic['er']=(0.1,0.9*100)
-pro_dic['econs']=(0.1,0.9*100)
-pro_dic['rcons']=(0.1,0.9*100)
-pro_dic['B']=(0.1,0.9*100)
-pro_dic['p']=(0.1,0.9*100)
-pro_dic['g']=(0.1,0.9*100)
+pro_dic['er']=(0.1*100,0.9*100)
+pro_dic['econs']=(0.1*100,0.9*100)
+pro_dic['rcons']=(0.1*100,0.9*100)
+pro_dic['B']=(0.1*100,0.9*100)
+pro_dic['p']=(0.1,0.9)
+pro_dic['g']=(0.1,0.9)
 def fx():
     h=np.random.random()
     def g(x):
@@ -51,7 +51,7 @@ pro_dic['twe']=(0,0)
 pro_dic['ler']=(0,0)
 pro_dics=[CS_ENV.fpro_config(pro_dic) for _ in range(num_pros)]
 task_dic={}
-task_dic['ez']=(0.5,1*100)
+task_dic['ez']=(0.5*100,1*100)
 task_dic['rz']=(0.5*1e-4*100,1e-4*100)
 task_dics=[CS_ENV.ftask_config(task_dic) for _ in range(maxnum_tasks)]
 job_d={}
@@ -61,16 +61,17 @@ job_d['sigma']=(0.5,1)
 job_d['num']=(1,maxnum_tasks)
 job_dic=CS_ENV.fjob_config(job_d)
 loc_config=CS_ENV.floc_config()
-z=['Q','T','C','F']
+z=['Q','T','C','F','B']
 lams={}
 lams['T']=1*1e-1
 lams['Q']=-1*1e-1
 lams['F']=-1*1e-1
 lams['C']=1*1e-1
+lams['B']=-0*1e-1
 bases={x:1 for x in z}
 
 env_c=CS_ENV.CSENV(pro_dics,maxnum_tasks,task_dics,
-        job_dic,loc_config,lams,env_steps,bases,bases,seed,tseed,reset_states=False,init_seed=iseed,change_prob=0.1)
+        job_dic,loc_config,lams,env_steps,bases,bases,seed,tseed,reset_states=True,init_seed=iseed,change_prob=0.0,send_type=1)
 
 r_agent=CS_ENV.RANDOM_AGENT(maxnum_tasks)
 model_test(env_c,r_agent,10,recored=False)
@@ -100,7 +101,6 @@ def public_test(agent):
     tl_0=model_test(env_c,agent,10)
     print('#'*20)
     env_c.cut_states=False
-    torch.manual_seed(0)
     print(env_c.test_seed[:10])
     r_agent=CS_ENV.OTHER_AGENT(CS_ENV.random_choice,maxnum_tasks)
     tl_1=model_test(env_c,r_agent,10)

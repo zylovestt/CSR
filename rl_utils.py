@@ -84,13 +84,20 @@ def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,
     states_orgin=[]
     done=False
     state = env.reset()
+    t=0
+    if pre_epochs<env.maxnum_episode:
+        print('pre_epochs too little')
     for _ in range(pre_epochs):
+        for pro in env.processors.pros:
+            t+=pro.pro_dic['twe']+pro.pro_dic['ler']
         action = agent.take_action(state)
         next_state, _, done, _, _ = env.step(action)
         states_orgin.append(state)
         state = next_state
         if done:
             state=env.reset()
+    env.time_break=t/(3*env.time_steps*pre_epochs*env.num_pros)
+    print('break_time:',env.time_break)
     F=lambda x:torch.tensor(x,dtype=torch.float).to(device)
     states=tuple(F(np.concatenate([x[i] for x in states_orgin],0)) for i in range(len(states_orgin[0])))
     mean,std=[],[]
@@ -102,6 +109,7 @@ def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,
 
     writer=agent.writer
     frame_idx=0
+    all_steps=0
     num_changes=0
     change_finish=False
     ts_time=time.time()
@@ -112,23 +120,24 @@ def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,
     episode_return = 0
     i_episode=0
     a_max=-1e100
-    k=0
+    kk=0
     while i_episode < num_episodes:
         transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': [], 'overs': []}
         step=0
-        k+=1
+        kk+=1
         while step<max_steps:
             step+=1
             frame_idx+=1
+            all_steps+=1
             action = agent.take_action(state)
             for i,pro in enumerate(env.processors.pros):
-                writer.add_scalar(tag='pro_twe-'+str(i),scalar_value=pro.pro_dic['twe'],global_step=frame_idx)
-                writer.add_scalar(tag='pro_ler-'+str(i),scalar_value=pro.pro_dic['ler'],global_step=frame_idx)
-                writer.add_scalar(tag='pro_loc-'+str(i),scalar_value=(pro.cal_squard_d(pro.t))**0.5,global_step=frame_idx)
-                writer.add_scalar(tag='pro_num_tasks-'+str(i),scalar_value=(action[0]==i).sum(),global_step=frame_idx)
+                writer.add_scalar(tag='pro_twe-'+str(i),scalar_value=pro.pro_dic['twe'],global_step=all_steps)
+                writer.add_scalar(tag='pro_ler-'+str(i),scalar_value=pro.pro_dic['ler'],global_step=all_steps)
+                writer.add_scalar(tag='pro_loc-'+str(i),scalar_value=(pro.cal_squard_d(pro.t))**0.5,global_step=all_steps)
+                writer.add_scalar(tag='pro_num_tasks-'+str(i),scalar_value=(action[0]==i).sum(),global_step=all_steps)
 
-            print(state[1])
-            print(action[0])
+            #print(state[1])
+            #print(action[0])
 
             t1=[pro.pro_dic['twe'] for pro in env.processors.pros]
             next_state, reward, done, over, _ = env.step(action)
@@ -137,10 +146,10 @@ def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,
                 if a and a==b:
                     print('wrong_env')
 
-            for pro in env.processors.pros:
+            '''for pro in env.processors.pros:
                 print('twe',pro.pro_dic['twe'])
             for pro in env.processors.pros:
-                print('ler',pro.pro_dic['ler'])
+                print('ler',pro.pro_dic['ler'])'''
 
             transition_dict['states'].append(state)
             transition_dict['actions'].append(action)
@@ -150,6 +159,9 @@ def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,
             transition_dict['overs'].append(over)
             state = next_state
             episode_return += reward
+            writer.add_scalar(tag='step_rewards_all',scalar_value=reward,global_step=all_steps)
+            for key,value in env.tarb_dic.items():
+                writer.add_scalar(tag='step_rewards_'+key,scalar_value=value[-1]*env.lams[key[0]],global_step=all_steps)
         if done:
             return_list.append(episode_return)
             writer.add_scalar(tag='return',scalar_value=episode_return,global_step=i_episode)
@@ -157,7 +169,7 @@ def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,
             if i_episode % cycles == 0:
                 print('speed:{}'.format(frame_idx/(time.time()-ts_time)))
                 frame_idx,ts_time=0,time.time()
-                test_reward=model_test(env,agent,10,recored=False)
+                test_reward=model_test(env,agent,5,recored=False)
                 print('episode:{}, test_reward:{}'.format(i_episode,test_reward[0]))
                 writer.add_scalar('test_reward',test_reward[0],i_episode)
                 a=np.mean(return_list[-cycles:])
@@ -181,7 +193,7 @@ def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,
             state = env.reset()
             #done = False
             episode_return = 0
-        if k%T_cycles==0 and max_steps<T_max:
+        if kk%T_cycles==0 and max_steps<T_max:
             max_steps+=1
         if print_steps:
             print('env_steps:{}'.format(env.num_steps))
