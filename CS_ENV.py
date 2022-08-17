@@ -2,6 +2,7 @@ import math
 import numpy as np
 import pandas as pd
 from collections import OrderedDict,defaultdict
+from TEST import model_test
 
 EPS=1e-8
 rui=lambda u:(lambda:float(np.random.randint(u[0],u[1])))
@@ -128,16 +129,17 @@ class PROCESSOR:
         return r
 
 class PROCESSORS:
-    def __init__(self,pro_configs:list,avg_reward=True):
+    def __init__(self,pro_configs:list,avg_reward=False):
         self.num_pros=len(pro_configs)
         self.pros=[PROCESSOR(pro_config) for pro_config in pro_configs]
-        self.pros_er=1/np.array([pro.pro_dic['er'] for pro in self.pros]).sum().item()
-        self.pros_rr=1/np.array([pro.cal_avg_rr() for pro in self.pros]).sum().item()
-        self.pros_econs=np.array([pro.pro_dic['econs'] for pro in self.pros]).sum().item()
-        self.pros_rcons=np.array([pro.pro_dic['rcons'] for pro in self.pros]).sum().item()
-        self.pros_Q=1/np.array([pro.pro_dic['Q']() for pro in self.pros]).sum().item()    #see,mybe change
-        self.pros_F=1/np.array([pro.pro_dic['F'] for pro in self.pros]).sum().item()
         self.avg_reward=avg_reward
+        if avg_reward:
+            self.pros_er=1/np.array([pro.pro_dic['er'] for pro in self.pros]).sum().item()
+            self.pros_rr=1/np.array([pro.cal_avg_rr() for pro in self.pros]).sum().item()
+            self.pros_econs=np.array([pro.pro_dic['econs'] for pro in self.pros]).sum().item()
+            self.pros_rcons=np.array([pro.pro_dic['rcons'] for pro in self.pros]).sum().item()
+            self.pros_Q=1/np.array([pro.pro_dic['Q']() for pro in self.pros]).sum().item()    #see,mybe change
+            self.pros_F=1/np.array([pro.pro_dic['F'] for pro in self.pros]).sum().item()
 
     def __call__(self,tin:float,tasks:dict,action:np.ndarray,womiga:float,sigma:float):
         for i,rz in enumerate(tasks['rz']):
@@ -212,7 +214,8 @@ class CSENV:
     name=0
     def __init__(self,pro_configs:list,maxnum_tasks:int,task_configs:list,job_config:dict,loc_config,
         lams:dict,maxnum_episode:int,bases:dict,bases_fm:dict,seed:list,test_seed:list,reset_states=False,
-        cut_states=False,init_seed=1,reset_step=False,change_prob=0,send_type=1,time_steps=5,time_break=2):
+        cut_states=False,init_seed=1,reset_step=False,change_prob=0,send_type=1,time_steps=5,time_break=2,
+        state_one=True,reward_one=True):
         '''lams:Q,T,C,F'''
         self.name+=1
         self.init_seed=init_seed
@@ -256,6 +259,8 @@ class CSENV:
         self.send_type=send_type
         self.time_steps=time_steps
         self.time_break=time_break
+        self.state_one=state_one
+        self.reward_one=reward_one
     
     def send(self):
         if self.send_type==0:
@@ -319,14 +324,14 @@ class CSENV:
             print(str(self.name)+' wrong_choice')
         R=self.processors(self.tin,self.tasks,action,self.womiga,self.sigma)
         t,s,s_t=0,0,0
-        for k,value in self.tar_dic.items():
-            value.append(R[k])
-            r=(self.bases[k]-R[k])/self.bases_fm[k]
-            self.tarb_dic[k+'b'].append(r)
-            s+=self.lams[k]*r
-            if not k=='B':
-                t+=self.lams[k]*R[k]
-                s_t+=self.lams[k]*r
+        for key,value in self.tar_dic.items():
+            value.append(R[key])
+            r=(self.bases[key]-R[key])/self.bases_fm[key]
+            self.tarb_dic[key+'b'].append(r)
+            s+=self.lams[key]*r
+            if not key=='B':
+                t+=self.lams[key]*R[key]
+                s_t+=self.lams[key]*r
         self.sum_tar.append(t)
         self.sum_tarb.append(s)
         self.sum_test_tar.append(s_t)
@@ -338,35 +343,96 @@ class CSENV:
     def set_train_mode(self):
         self.train=True
 
+    def set_one(self):
+        if self.reward_one or self.state_one:
+            agent=RANDOM_AGENT(self.maxnum_tasks)
+
+            if self.reward_one:
+                for key in self.bases:
+                    self.bases[key]=1
+                    self.bases_fm[key]=1
+            
+            if self.state_one:
+                self.states_mean=[0,0]
+                self.states_std=[1,1]
+                states_orgin=[]
+
+            state=self.send()
+            while not self.done:
+                if self.state_one:
+                    states_orgin.append(state)
+                action = agent.take_action(state)
+                next_state,*_ = self.step(action)
+                state = next_state
+            
+            if self.state_one:
+                states=tuple(np.concatenate([x[i] for x in states_orgin],0) for i in range(len(states_orgin[0])))
+                self.states_mean[0]=(states[0][:,:,:,:-self.maxnum_tasks].mean(axis=0))
+                self.states_std[0]=(states[0][:,:,:,:-self.maxnum_tasks].std(axis=0))
+                self.states_mean[1]=(states[1].mean(axis=0))
+                self.states_std[1]=(states[1].std(axis=0))
+
+            if self.reward_one:
+                for key in self.bases:
+                    self.tar_dic[key].sort()
+                    g=np.array(self.tar_dic[key],dtype='float32')
+                    l=len(g)
+                    self.bases[key]=g[l//2]
+                    self.bases_fm[key]=g[l*3//4]-g[l//4]+1
+                for key in self.bases:
+                    self.tar_dic[key]=[]
+                    self.tarb_dic[key+'b']=[]
+
     def reset(self):
         self.over=0
         self.done=0
         self.num_steps=0
 
-        if self.train:
-            np.random.seed(self.seed[self.seedid%len(self.seed)])
-            self.seedid+=1
-        else:
-            np.random.seed(self.test_seed[self.test_id%len(self.test_seed)])
-            self.test_id+=1
+        
 
         if self.reset_states:
+            if self.train:
+                np.random.seed(self.seed[self.seedid%len(self.seed)])  
+            else:
+                np.random.seed(self.test_seed[self.test_id%len(self.test_seed)])
             self.processors=PROCESSORS(self.pro_configs)
-            #self.job=JOB(self.maxnum_tasks,self.task_configs,self.job_config)
             self.job.job_index=0
             self.job.tin=0
+
+            self.set_one()
+            
+            if self.train:
+                np.random.seed(self.seed[self.seedid%len(self.seed)])
+                self.seedid+=1
+            else:
+                np.random.seed(self.test_seed[self.test_id%len(self.test_seed)])
+                self.test_id+=1 
+            self.processors=PROCESSORS(self.pro_configs)
+            self.job.job_index=0
+            self.job.tin=0
+
         else:
             np.random.seed(self.init_seed)
             self.processors=PROCESSORS(self.pro_configs)
             self.job.job_index=0
             self.job.tin=0
+            if self.train:
+                np.random.seed(self.seed[self.seedid%len(self.seed)])
+            else:
+                np.random.seed(self.test_seed[self.test_id%len(self.test_seed)])
 
-        if self.train:
-            np.random.seed(self.seed[self.seedid%len(self.seed)])
-            self.seedid+=1
-        else:
-            np.random.seed(self.test_seed[self.test_id%len(self.test_seed)])
-            self.test_id+=1
+            self.set_one()
+
+            np.random.seed(self.init_seed)
+            self.processors=PROCESSORS(self.pro_configs)
+            self.job.job_index=0
+            self.job.tin=0
+            if self.train:
+                np.random.seed(self.seed[self.seedid%len(self.seed)])
+                self.seedid+=1
+            else:
+                np.random.seed(self.test_seed[self.test_id%len(self.test_seed)])
+                self.test_id+=1
 
         return self.send()
     

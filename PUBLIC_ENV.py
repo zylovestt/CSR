@@ -74,8 +74,7 @@ env_c=CS_ENV.CSENV(pro_dics,maxnum_tasks,task_dics,
         job_dic,loc_config,lams,env_steps,bases,bases,seed,tseed,reset_states=True,init_seed=iseed,change_prob=0.0,send_type=1)
 
 r_agent=CS_ENV.RANDOM_AGENT(maxnum_tasks)
-model_test(env_c,r_agent,10,recored=False)
-
+model_test(env_c,r_agent,1,recored=False)
 for key in env_c.bases:
     env_c.tar_dic[key].sort()
     g=np.array(env_c.tar_dic[key],dtype='float32')
@@ -85,7 +84,7 @@ for key in env_c.bases:
 for key in env_c.bases:
     env_c.tar_dic[key]=[]
     env_c.tarb_dic[key+'b']=[]
-bases_fm=env_c.bases_fm
+#bases_fm=env_c.bases_fm
 
 if env_c.reset_states:
     env_c.cut_states=False

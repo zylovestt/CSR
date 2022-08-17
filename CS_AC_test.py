@@ -17,3 +17,4 @@ if __name__=='__main__':
     agent.writer.close()
     public_test(agent)
     print(time.time()-t_start)
+    
