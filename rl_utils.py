@@ -126,6 +126,7 @@ def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,
         step=0
         kk+=1
         while step<max_steps:
+            #print(state)
             step+=1
             frame_idx+=1
             all_steps+=1

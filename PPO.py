@@ -638,7 +638,7 @@ class PPO_softmax1:
 
 class PPO_softmax:
     ''' PPO算法,采用截断方式 '''
-    def __init__(self,input_shape:tuple,num_subtasks,weights,gamma,device,clip_grad,lmbda,epochs,eps,beta,net,optim,cut,norm,std=[1,1],mean=[0,0],state_beta=0.9,reward_one=False,fm_eps=1e-8):
+    def __init__(self,input_shape:tuple,num_subtasks,weights,gamma,device,clip_grad,lmbda,epochs,eps,beta,net,optim,cut,norm,std=[1,1],mean=[0,0],state_beta=0.9,reward_one=False,fm_eps=1e-8,cri_type='u'):
         self.writer=SummaryWriter(comment='PPO')
         self.step=0
         self.agent=net
@@ -664,6 +664,7 @@ class PPO_softmax:
         self.reward_one=reward_one
         self.state_beta=state_beta
         self.fm_eps=fm_eps
+        self.cri_type=cri_type
     
     def F_norm(self,norm):
         def mean_std_all(state):
@@ -749,18 +750,23 @@ class PPO_softmax:
         next_states=tuple(F(np.concatenate([x[i] for x in transition_dict['next_states']],0)) for i in range(len(transition_dict['states'][0])))
         self.norm(next_states)
         overs=F(transition_dict['overs']).view(-1,1)
-        dones=transition_dict['dones']
+        
 
+        #dones=transition_dict['dones']
+        #if self.cri_type=='gce':
         all_states=tuple(torch.concat((states[i][0:1],next_states[i])) for i in range(2))
         temp=self.agent(all_states)[1]
-        td_target = rewards + self.gamma * temp[1:] * (1 - overs)
-        
+        td_target = rewards + self.gamma * temp[1:] * (1-overs)
         td_delta = td_target - temp[:-1]
-        #advantage = rl_utils.compute_advantage(self.gamma, self.lmbda,td_delta.cpu()).to(self.device)
-        advantage = rl_utils.compute_advantage_batch(self.gamma, self.lmbda,td_delta.cpu(),dones).to(self.device)
-        if self.reward_one:
-            advantage=(advantage)/(advantage.std()+self.fm_eps)
-        #td_target=advantage.view(-1,1)+temp[:-1]                                               
+    
+        #td_target=rewards+self.gamma*self.agent(next_states)[1]*(1-overs)
+        #td_delta=td_target-self.agent(states)[1]
+        advantage = rl_utils.compute_advantage(self.gamma, self.lmbda,td_delta.cpu()).to(self.device)
+        #advantage = rl_utils.compute_advantage_batch(self.gamma, self.lmbda,td_delta.cpu(),dones).to(self.device)
+        '''if self.reward_one:
+            advantage=(advantage)/(advantage.std()+self.fm_eps)'''
+        if self.cri_type=='gce':
+            td_target=advantage.view(-1,1)+temp[:-1]                                               
         old_log_probs = self.calculate_probs_log(self.agent(states)[0],actions).detach()
         flag=0
         for j in range(self.epochs):

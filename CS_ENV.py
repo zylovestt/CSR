@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from collections import OrderedDict,defaultdict
 from TEST import model_test
+from copy import deepcopy
 
 EPS=1e-8
 rui=lambda u:(lambda:float(np.random.randint(u[0],u[1])))
@@ -129,7 +130,7 @@ class PROCESSOR:
         return r
 
 class PROCESSORS:
-    def __init__(self,pro_configs:list,avg_reward=True):
+    def __init__(self,pro_configs:list,avg_reward=False):
         self.num_pros=len(pro_configs)
         self.pros=[PROCESSOR(pro_config) for pro_config in pro_configs]
         self.avg_reward=avg_reward
@@ -215,7 +216,7 @@ class CSENV:
     def __init__(self,pro_configs:list,maxnum_tasks:int,task_configs:list,job_config:dict,loc_config,
         lams:dict,maxnum_episode:int,bases:dict,bases_fm:dict,seed:list,test_seed:list,reset_states=False,
         cut_states=False,init_seed=1,reset_step=False,change_prob=0,send_type=1,time_steps=5,time_break=2,
-        state_one=True,reward_one=True,states_mean=[0,0],states_std=[1,1],fm_eps=1e-8,set_break_time=True):
+        state_one=True,reward_one=True,states_mean=[0,0],states_std=[1,1],fm_eps=1,set_break_time=True,state_beta=0.95,reward_one_type='std'):  #state_beta=1
         '''lams:Q,T,C,F'''
         self.name+=1
         self.init_seed=init_seed
@@ -265,6 +266,10 @@ class CSENV:
         self.states_std=states_std
         self.fm_eps=fm_eps
         self.set_break_time=set_break_time
+        self.state_beta=state_beta
+        self.states_init=True
+        self.rewards_init=True
+        self.reward_one_type=reward_one_type
     
     def send(self):
         if self.send_type==0:
@@ -367,22 +372,29 @@ class CSENV:
             agent=RANDOM_AGENT(self.maxnum_tasks)
 
             if self.reward_one:
+                bases_old=deepcopy(self.bases)
+                bases_fm_old=deepcopy(self.bases_fm)
                 for key in self.bases:
                     self.bases[key]=0
                     self.bases_fm[key]=1
             
+            state_one_flag=0
             if self.state_one:
-                self.states_mean=[0,0]
-                self.states_std=[1,1]
+                state_one_flag=1
                 states_orgin=[]
+            self.state_one=False
             
             if self.set_break_time:
                 break_time=0
             
-            for _ in range(5):
+            for key in self.bases:
+                self.tar_dic[key]=[]
+                self.tarb_dic[key+'b']=[]  #关键
+
+            for _ in range(1):
                 state=self.send()
                 while not self.done:
-                    if self.state_one:
+                    if state_one_flag:
                         states_orgin.append(state)
                     if self.set_break_time:
                         for pro in self.processors.pros:
@@ -398,34 +410,62 @@ class CSENV:
                     pro.sum_Aq=0
                     pro.Nk=0
                     pro.cal_Aq()
-                    
+
                 self.job.job_index=0
                 self.job.tin=0
                 self.over=0
                 self.done=0
                 self.num_steps=0
             
-            if self.state_one:
+            if state_one_flag:
                 states=tuple(np.concatenate([x[i] for x in states_orgin],0) for i in range(len(states_orgin[0])))
-                self.states_mean[0]=(states[0][:,:,:,:-self.maxnum_tasks].mean(axis=0))
-                self.states_std[0]=(states[0][:,:,:,:-self.maxnum_tasks].std(axis=0))
-                self.states_mean[1]=(states[1].mean(axis=0))
-                self.states_std[1]=(states[1].std(axis=0))
+                if self.states_init:
+                    self.states_mean[0]=(states[0][:,:,:,:-self.maxnum_tasks].mean(axis=0))
+                    self.states_std[0]=(states[0][:,:,:,:-self.maxnum_tasks].std(axis=0))
+                    self.states_mean[1]=(states[1].mean(axis=0))
+                    self.states_std[1]=(states[1].std(axis=0))
+                    self.states_init=False
+                else:
+                    self.states_mean[0]=self.state_beta*self.states_mean[0]+(1-self.state_beta)*states[0][:,:,:,:-self.maxnum_tasks].mean(axis=0)
+                    self.states_std[0]=self.state_beta*self.states_std[0]+(1-self.state_beta)*states[0][:,:,:,:-self.maxnum_tasks].std(axis=0)
+                    self.states_mean[1]=self.state_beta*self.states_mean[1]+(1-self.state_beta)*states[1].mean(axis=0)
+                    self.states_std[1]=self.state_beta*self.states_std[1]+(1-self.state_beta)*(states[1].std(axis=0))
+                
+                self.state_one=True
 
             if self.reward_one:
-                for key in self.bases:
-                    self.bases[key]=np.array(self.tar_dic[key]).mean()
-                    self.bases_fm[key]=np.array(self.tar_dic[key]).std()+self.fm_eps
-                '''for key in self.bases:
-                    self.tar_dic[key].sort()
-                    g=np.array(self.tar_dic[key],dtype='float32')
-                    l=len(g)
-                    self.bases[key]=g[l//2]
-                    self.bases_fm[key]=g[l*3//4]-g[l//4]+1'''
+                if self.reward_one_type=='std':
+                    if self.rewards_init:
+                        for key in self.bases:
+                            self.bases[key]=np.array(self.tar_dic[key]).mean()
+                            self.bases_fm[key]=np.array(self.tar_dic[key]).std()+self.fm_eps 
+                            self.rewards_init=False
+                    else:
+                        for key in self.bases:
+                            self.bases[key]=self.state_beta*bases_old[key]+(1-self.state_beta)*np.array(self.tar_dic[key]).mean()
+                            self.bases_fm[key]=self.state_beta*bases_fm_old[key]+(1-self.state_beta)*(np.array(self.tar_dic[key]).std()+self.fm_eps)
+                        
+                
+                else:
+                    for key in self.bases:
+                        self.tar_dic[key].sort()
+                        g=np.array(self.tar_dic[key],dtype='float32')
+                        l=len(g)
+                        if self.rewards_init:
+                            self.bases[key]=g.mean()
+                            self.bases_fm[key]=g[l*3//4]-g[l//4]+1
+                        else:
+                            self.bases[key]=self.state_beta*bases_old[key]+(1-self.state_beta)*g.mean()
+                            self.bases_fm[key]=self.state_beta*bases_fm_old[key]+(1-self.state_beta)*(g[l*3//4]-g[l//4]+1)
+                    
+                    if self.rewards_init:
+                        self.rewards_init=False
+                    
 
-                '''for key in self.bases:
-                    self.tar_dic[key]=[]
-                    self.tarb_dic[key+'b']=[]'''
+                    
+            for key in self.bases:
+                self.tar_dic[key]=[]
+                self.tarb_dic[key+'b']=[]  #关键'''
             
             if self.set_break_time:
                 self.time_break=break_time/(3*self.time_steps*self.maxnum_episode*self.num_pros)

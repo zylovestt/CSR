@@ -788,7 +788,7 @@ class ActorCritic_Double_softmax1:
         return self.cal_(r,0,self.gamma*self.labda)
 
 class ActorCritic_Double_softmax:
-    def __init__(self,input_shape,num_subtasks,weights,gamma,device,clip_grad,beta,n_steps,mode,labda,proc_name,optimizer=None,net=None,norm=None,reward_one=False,fm_eps=1e-8,state_beta=0.9):
+    def __init__(self,input_shape,num_subtasks,weights,gamma,device,clip_grad,beta,n_steps,mode,labda,proc_name,optimizer=None,net=None,norm=None,reward_one=False,fm_eps=1e-8,state_beta=0.9,cri_type='u'):
         self.writer=SummaryWriter(comment='A3C'+proc_name)
         self.step=0
         self.num_processors=input_shape[0][2]
@@ -816,6 +816,7 @@ class ActorCritic_Double_softmax:
         self.fm_eps=fm_eps
         self.mean=[0,0]
         self.std=[1,1]
+        self.cri_type=cri_type
     
     def F_norm(self,norm):
         def mean_std_all(state):
@@ -913,7 +914,10 @@ class ActorCritic_Double_softmax:
         elif self.mode=='gce':
             F_td=self.cal_gce
         td_delta=F_td(rewards,states,next_states,overs)  # 时序差分误差
-        td_target=td_delta+self.agent(states)[1]
+        if self.cri_type=='gce':
+            td_target=td_delta+self.agent(states)[1]
+        else:
+            td_target=rewards+self.gamma*self.agent(next_states)[1]*(1-overs)
         self.ac_loss.append(td_delta.mean().item())
         if self.ac_loss[-1]<-15:
             print('loss_too_big!')

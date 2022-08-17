@@ -9,12 +9,12 @@ np.random.seed(1)
 torch.manual_seed(0)
 
 lr = 1*1e-5
-num_episodes = 100
+num_episodes = 200
 gamma = 0.95
-num_pros=10
-maxnum_tasks=10
-env_steps=100
-max_steps=20
+num_pros=7
+maxnum_tasks=7
+env_steps=50
+max_steps=10
 tanh=False
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 iseed=1
@@ -25,12 +25,12 @@ np.set_printoptions(2)
 pro_dic={}
 pro_dic['F']=(0.7,0.99)
 pro_dic['Q']=(0.7,0.99)
-pro_dic['er']=(0.1*100,0.9*100)
-pro_dic['econs']=(0.1*100,0.9*100)
-pro_dic['rcons']=(0.1*100,0.9*100)
-pro_dic['B']=(0.1*100,0.9*100)
-pro_dic['p']=(0.1,0.9)
-pro_dic['g']=(0.1,0.9)
+pro_dic['er']=(0.5*100,0.9*100)
+pro_dic['econs']=(0.5*10,0.9*10)
+pro_dic['rcons']=(0.5*10,0.9*10)
+pro_dic['B']=(0.5*100,0.9*100)
+pro_dic['p']=(0.5,0.9)
+pro_dic['g']=(0.5,0.9)
 def fx():
     h=np.random.random()
     def g(x):
@@ -51,13 +51,13 @@ pro_dic['twe']=(0,0)
 pro_dic['ler']=(0,0)
 pro_dics=[CS_ENV.fpro_config(pro_dic) for _ in range(num_pros)]
 task_dic={}
-task_dic['ez']=(0.5*100,1*100)
-task_dic['rz']=(0.5*1e-4*100,1e-4*100)
+task_dic['ez']=(0.1*10,1*10)
+task_dic['rz']=(0.1*1e-4*100,1e-4*100)
 task_dics=[CS_ENV.ftask_config(task_dic) for _ in range(maxnum_tasks)]
 job_d={}
-job_d['time']=(0.1,0.3)
-job_d['womiga']=(0.5,2)
-job_d['sigma']=(0.5,1)
+job_d['time']=(1,1)
+job_d['womiga']=(0.5,1)
+job_d['sigma']=(0.6,1)
 job_d['num']=(1,maxnum_tasks)
 job_dic=CS_ENV.fjob_config(job_d)
 loc_config=CS_ENV.floc_config()
@@ -73,7 +73,9 @@ bases_fm={x:0 for x in z}
 
 
 env_c=CS_ENV.CSENV(pro_dics,maxnum_tasks,task_dics,
-        job_dic,loc_config,lams,env_steps,bases,bases_fm,seed,tseed,reset_states=True,init_seed=iseed,change_prob=0.0,send_type=1,reward_one=True,state_one=False,set_break_time=False)
+        job_dic,loc_config,lams,env_steps,bases,bases_fm,seed,tseed,reset_states=False,
+        init_seed=iseed,change_prob=0.0,send_type=1,reward_one=True,state_one=True,
+        set_break_time=False,state_beta=0.99,reward_one_type='std')
 
 '''r_agent=CS_ENV.RANDOM_AGENT(maxnum_tasks)
 model_test(env_c,r_agent,1,recored=False)
@@ -93,7 +95,7 @@ else:
     env_c.cut_states=True
 state=env_c.reset()
 W=(state[0].shape,state[1].shape)
-net=AGENT_NET.DoubleNet_softmax_simple(W,maxnum_tasks,tanh,depart=True).to(device)
+net=AGENT_NET.DoubleNet_softmax_simple(W,maxnum_tasks,tanh,depart=True).to(device)  #change
 optim=torch.optim.NAdam(net.parameters(),lr=lr,eps=1e-8)
 
 def public_test(agent):

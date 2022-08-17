@@ -5,7 +5,8 @@ import time
 from PUBLIC_ENV import *
 
 load_net=False
-agent=AC.ActorCritic_Double_softmax(W,maxnum_tasks,5,gamma,device,clip_grad=1e-1,beta=1e-4,n_steps=0,mode='gce',labda=0.95,proc_name='0',optimizer=optim,net=net,norm='u',reward_one=False,state_beta=0.99)
+agent=AC.ActorCritic_Double_softmax(W,maxnum_tasks,5,gamma,device,clip_grad=1e-1,beta=1e-4,n_steps=0,mode='gce',labda=0.95,
+proc_name='0',optimizer=optim,net=net,norm='u',reward_one=False,state_beta=0.99,cri_type='u')
 if load_net:
     agent.agent.load_state_dict(torch.load("../data/CS_AC_model_parameter_last.pkl"))
     agent.agent_optimizer=torch.optim.SGD(params=agent.agent.parameters(),lr=lr,momentum=0.9)
