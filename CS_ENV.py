@@ -129,7 +129,7 @@ class PROCESSOR:
         return r
 
 class PROCESSORS:
-    def __init__(self,pro_configs:list,avg_reward=False):
+    def __init__(self,pro_configs:list,avg_reward=True):
         self.num_pros=len(pro_configs)
         self.pros=[PROCESSOR(pro_config) for pro_config in pro_configs]
         self.avg_reward=avg_reward
@@ -215,7 +215,7 @@ class CSENV:
     def __init__(self,pro_configs:list,maxnum_tasks:int,task_configs:list,job_config:dict,loc_config,
         lams:dict,maxnum_episode:int,bases:dict,bases_fm:dict,seed:list,test_seed:list,reset_states=False,
         cut_states=False,init_seed=1,reset_step=False,change_prob=0,send_type=1,time_steps=5,time_break=2,
-        state_one=True,reward_one=True):
+        state_one=True,reward_one=True,states_mean=[0,0],states_std=[1,1],fm_eps=1e-8,set_break_time=True):
         '''lams:Q,T,C,F'''
         self.name+=1
         self.init_seed=init_seed
@@ -261,6 +261,10 @@ class CSENV:
         self.time_break=time_break
         self.state_one=state_one
         self.reward_one=reward_one
+        self.states_mean=states_mean
+        self.states_std=states_std
+        self.fm_eps=fm_eps
+        self.set_break_time=set_break_time
     
     def send(self):
         if self.send_type==0:
@@ -289,6 +293,9 @@ class CSENV:
             task_status.extend(item)
         task_status.extend([self.womiga,self.sigma])
         task_status=np.array(task_status).reshape(1,-1)
+
+        if self.state_one:
+            self.cal_state_one((pro_status,task_status))
         return pro_status,task_status
     
     def send1(self):
@@ -316,7 +323,15 @@ class CSENV:
             pro_status.append(items)
         pro_status=np.concatenate((np.array(pro_status),ez_div_er,ez_mul_econs,rz_mul_rcons,rz_div_B,tr_t,task_loc),1).reshape(1,1,self.processors.num_pros,-1)
         task_status=np.array([self.womiga,self.sigma]).reshape(1,-1)
+
+        if self.state_one:
+            self.cal_state_one((pro_status,task_status))
         return pro_status,task_status
+
+    def cal_state_one(self,state):
+        u=state[0][:,:,:,:-self.maxnum_tasks]
+        u[:]=(u-self.states_mean[0])/(self.states_std[0]+self.fm_eps)
+        state[1][:]=(state[1]-self.states_mean[1])/(self.states_std[1]+self.fm_eps)
 
     def accept(self,action:np.ndarray):
         choice_prob=np.prod(self.task_loc[action[0],range(self.maxnum_tasks)])
@@ -344,26 +359,51 @@ class CSENV:
         self.train=True
 
     def set_one(self):
-        if self.reward_one or self.state_one:
+        self.over=0
+        self.done=0
+        self.num_steps=0
+        if self.reward_one or self.state_one or self.set_break_time:
+            
             agent=RANDOM_AGENT(self.maxnum_tasks)
 
             if self.reward_one:
                 for key in self.bases:
-                    self.bases[key]=1
+                    self.bases[key]=0
                     self.bases_fm[key]=1
             
             if self.state_one:
                 self.states_mean=[0,0]
                 self.states_std=[1,1]
                 states_orgin=[]
-
-            state=self.send()
-            while not self.done:
-                if self.state_one:
-                    states_orgin.append(state)
-                action = agent.take_action(state)
-                next_state,*_ = self.step(action)
-                state = next_state
+            
+            if self.set_break_time:
+                break_time=0
+            
+            for _ in range(5):
+                state=self.send()
+                while not self.done:
+                    if self.state_one:
+                        states_orgin.append(state)
+                    if self.set_break_time:
+                        for pro in self.processors.pros:
+                            break_time+=pro.pro_dic['twe']+pro.pro_dic['ler']
+                    action = agent.take_action(state)
+                    next_state,*_ = self.step(action)
+                    state = next_state
+                
+                for pro in self.processors.pros:
+                    pro.Exe=0
+                    pro.UExe=0
+                    pro.cal_PF()
+                    pro.sum_Aq=0
+                    pro.Nk=0
+                    pro.cal_Aq()
+                    
+                self.job.job_index=0
+                self.job.tin=0
+                self.over=0
+                self.done=0
+                self.num_steps=0
             
             if self.state_one:
                 states=tuple(np.concatenate([x[i] for x in states_orgin],0) for i in range(len(states_orgin[0])))
@@ -374,22 +414,24 @@ class CSENV:
 
             if self.reward_one:
                 for key in self.bases:
+                    self.bases[key]=np.array(self.tar_dic[key]).mean()
+                    self.bases_fm[key]=np.array(self.tar_dic[key]).std()+self.fm_eps
+                '''for key in self.bases:
                     self.tar_dic[key].sort()
                     g=np.array(self.tar_dic[key],dtype='float32')
                     l=len(g)
                     self.bases[key]=g[l//2]
-                    self.bases_fm[key]=g[l*3//4]-g[l//4]+1
-                for key in self.bases:
+                    self.bases_fm[key]=g[l*3//4]-g[l//4]+1'''
+
+                '''for key in self.bases:
                     self.tar_dic[key]=[]
-                    self.tarb_dic[key+'b']=[]
+                    self.tarb_dic[key+'b']=[]'''
+            
+            if self.set_break_time:
+                self.time_break=break_time/(3*self.time_steps*self.maxnum_episode*self.num_pros)
 
     def reset(self):
-        self.over=0
-        self.done=0
-        self.num_steps=0
-
         
-
         if self.reset_states:
             if self.train:
                 np.random.seed(self.seed[self.seedid%len(self.seed)])  
@@ -433,6 +475,8 @@ class CSENV:
             else:
                 np.random.seed(self.test_seed[self.test_id%len(self.test_seed)])
                 self.test_id+=1
+        
+        
 
         return self.send()
     

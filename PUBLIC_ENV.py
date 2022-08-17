@@ -56,7 +56,7 @@ task_dic['rz']=(0.5*1e-4*100,1e-4*100)
 task_dics=[CS_ENV.ftask_config(task_dic) for _ in range(maxnum_tasks)]
 job_d={}
 job_d['time']=(0.1,0.3)
-job_d['womiga']=(0.5,1)
+job_d['womiga']=(0.5,2)
 job_d['sigma']=(0.5,1)
 job_d['num']=(1,maxnum_tasks)
 job_dic=CS_ENV.fjob_config(job_d)
@@ -68,12 +68,14 @@ lams['Q']=-1*1e-1
 lams['F']=-1*1e-1
 lams['C']=1*1e-1
 lams['B']=-0*1e-1
-bases={x:1 for x in z}
+bases={x:0 for x in z}
+bases_fm={x:0 for x in z}
+
 
 env_c=CS_ENV.CSENV(pro_dics,maxnum_tasks,task_dics,
-        job_dic,loc_config,lams,env_steps,bases,bases,seed,tseed,reset_states=True,init_seed=iseed,change_prob=0.0,send_type=1)
+        job_dic,loc_config,lams,env_steps,bases,bases_fm,seed,tseed,reset_states=True,init_seed=iseed,change_prob=0.0,send_type=1,reward_one=True,state_one=False,set_break_time=False)
 
-r_agent=CS_ENV.RANDOM_AGENT(maxnum_tasks)
+'''r_agent=CS_ENV.RANDOM_AGENT(maxnum_tasks)
 model_test(env_c,r_agent,1,recored=False)
 for key in env_c.bases:
     env_c.tar_dic[key].sort()
@@ -83,8 +85,7 @@ for key in env_c.bases:
     env_c.bases_fm[key]=g[l*3//4]-g[l//4]+1
 for key in env_c.bases:
     env_c.tar_dic[key]=[]
-    env_c.tarb_dic[key+'b']=[]
-#bases_fm=env_c.bases_fm
+    env_c.tarb_dic[key+'b']=[]'''
 
 if env_c.reset_states:
     env_c.cut_states=False
@@ -99,7 +100,9 @@ def public_test(agent):
     print('start_test'+'#'*60)
     tl_0=model_test(env_c,agent,10)
     print('#'*20)
+
     env_c.cut_states=False
+    env_c.state_one=False
     print(env_c.test_seed[:10])
     r_agent=CS_ENV.OTHER_AGENT(CS_ENV.random_choice,maxnum_tasks)
     tl_1=model_test(env_c,r_agent,10)

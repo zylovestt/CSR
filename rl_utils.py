@@ -81,7 +81,7 @@ def train_on_policy_agent(env, agent, num_episodes,max_steps,cycles,T_cycles=tor
     return return_list
 
 def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,cycles,T_cycles=torch.inf,T_max=0,print_steps=False,pre_epochs=100,device='cuda',reps=1e-1,change_optim=10000,lr=1e-4,step_base=1,save_name=None):
-    states_orgin=[]
+    #states_orgin=[]
     done=False
     state = env.reset()
     t=0
@@ -92,20 +92,20 @@ def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,
             t+=pro.pro_dic['twe']+pro.pro_dic['ler']
         action = agent.take_action(state)
         next_state, _, done, _, _ = env.step(action)
-        states_orgin.append(state)
+        #states_orgin.append(state)
         state = next_state
         if done:
             state=env.reset()
     env.time_break=t/(3*env.time_steps*pre_epochs*env.num_pros)
     print('break_time:',env.time_break)
-    F=lambda x:torch.tensor(x,dtype=torch.float).to(device)
+    '''F=lambda x:torch.tensor(x,dtype=torch.float).to(device)
     states=tuple(F(np.concatenate([x[i] for x in states_orgin],0)) for i in range(len(states_orgin[0])))
     mean,std=[],[]
     mean.append(states[0][:,:,:,:-agent.num_subtasks].mean(dim=0))
     std.append(states[0][:,:,:,:-agent.num_subtasks].std(dim=0))
     mean.append(states[1].mean(dim=0))
     std.append(states[1].std(dim=0))
-    agent.mean,agent.std=mean,std
+    agent.mean,agent.std=mean,std'''
 
     writer=agent.writer
     frame_idx=0
