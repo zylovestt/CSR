@@ -876,7 +876,7 @@ class ActorCritic_Double_softmax:
             action_subtasks.append(torch.distributions.Categorical(logits=x).sample().item())
 
         action_prior=[]
-        probs_prior_orginal=torch.cat(probs_prior_orginal,0)
+        probs_prior_orginal=probs_prior_orginal[:,0]
         probs_prior_orginal=torch.tensor(
             np.concatenate((probs_prior_orginal.cpu().detach().numpy(),np.arange(self.num_subtasks).reshape(1,-1)),0),dtype=torch.float)
         for i in range(self.num_subtasks):
@@ -977,16 +977,17 @@ class ActorCritic_Double_softmax:
         return grads
     
     def calculate_probs_log(self,out_puts,actions):
-        probs_log=0
-        for i in range(self.num_subtasks):
-            t=torch.gather(FU.log_softmax(out_puts[0][i],dim=1),1,actions[0][:,[i]])
-            probs_log+=t
-        for i in range(self.num_subtasks-1):
-            t=torch.gather(out_puts[1][i],1,actions[1][:,[i]])
-            u=out_puts[1][i].exp().sum(axis=1,keepdim=True)
-            s=torch.gather(out_puts[1][i].exp(),1,actions[1][:,:i]).sum(axis=1,keepdim=True)
-            probs_log+=t-(u-s).log()
-        return probs_log
+        probs_log=torch.gather(FU.log_softmax(out_puts[0],dim=2),2,actions[0].T.view(out_puts[0].shape[0],-1,1)).unsqueeze(0).sum(dim=1)
+        if torch.isnan(probs_log.sum())>0 or torch.isinf(probs_log.sum())>0:
+            print("probs_subtasks_too_big!")
+        mask=torch.zeros_like(out_puts[1])
+        for i in range(self.num_subtasks-2):
+            mask[i+1:,range(mask.shape[1]),actions[1][:,i]]=-1/self.fm_eps
+        out_puts_1=out_puts[1]+mask
+        probs_log+=torch.gather(FU.log_softmax(out_puts_1,dim=2),2,actions[1][:,:-1].T.view(out_puts_1.shape[0],-1,1)).unsqueeze(0).sum(dim=1)
+        if torch.isnan(probs_log.sum())>0 or torch.isinf(probs_log.sum())>0:
+            print("probs_subtasks_too_big!")
+        return probs_log.squeeze(0)
 
     def cal_nsteps(self,rewards,states,next_states,overs):
         r=rewards

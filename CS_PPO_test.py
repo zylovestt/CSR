@@ -4,12 +4,12 @@ import PPO
 import time
 from PUBLIC_ENV import *
 
-lmbda = 0.95
-epochs = 3
-eps = 0.3
+lmbda = 0.95 #0.95 
+epochs = 3 #3 
+eps = 0.3 #may be important 0.3
 load_net=False
 
-beta=1e-5/(maxnum_tasks*math.log(maxnum_tasks*num_pros))
+beta=1e-2/(maxnum_tasks*math.log(maxnum_tasks*num_pros))
 print('beta:',beta)
 agent = PPO.PPO_softmax(W,maxnum_tasks,weights=1,gamma=gamma,device=device,clip_grad='max',lmbda=lmbda,
     epochs=epochs,eps=eps,beta=beta,net=net,optim=optim,cut=False,norm='u',reward_one=False,state_beta=-1,cri_type='gce')

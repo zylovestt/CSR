@@ -2,7 +2,6 @@ import math
 import numpy as np
 import pandas as pd
 from collections import OrderedDict,defaultdict
-from TEST import model_test
 from copy import deepcopy
 
 EPS=1e-8
@@ -214,12 +213,12 @@ class JOB:
 class CSENV:
     name=0
     def __init__(self,pro_configs:list,maxnum_tasks:int,task_configs:list,job_config:dict,loc_config,
-        lams:dict,maxnum_episode:int,bases:dict,bases_fm:dict,seed:list,test_seed:list,reset_states=False,
-        cut_states=False,init_seed=1,reset_step=False,change_prob=0,send_type=1,time_steps=5,time_break=2,
-        state_one=True,reward_one=True,states_mean=[0,0],states_std=[1,1],fm_eps=1,set_break_time=True,state_beta=0.95,reward_one_type='std'):  #state_beta=1
+        lams:dict,maxnum_episode:int,bases:dict,bases_fm:dict,train_seed:list,test_seed:list,reset_states=False,
+        cut_states=False,reset_step=False,change_prob=0,send_type=1,time_steps=5,time_break=2,
+        state_one=True,reward_one=True,states_mean=[0,0],states_std=[1,1],fm_eps=1,set_break_time=True,
+        state_beta=0.95,reward_one_type='std',train_init_seed=[],test_init_seed=[]):  #state_beta=1
         '''lams:Q,T,C,F'''
         self.name+=1
-        self.init_seed=init_seed
         self.pro_configs=pro_configs
         self.task_configs=task_configs
         self.job_config=job_config
@@ -246,12 +245,15 @@ class CSENV:
         self.maxnum_episode=maxnum_episode
         self.set_random_const=False
         self.train=True
-        self.seed=seed
-        self.seedid=0
+        self.train_seed=train_seed
+        self.train_seed_id=0
         self.test_seed=test_seed
-        self.test_id=0
-        np.random.seed(init_seed)
-        self.processors=PROCESSORS(self.pro_configs)
+        self.test_seed_id=0
+        self.train_init_seed=train_init_seed
+        self.train_init_seed_id=0
+        self.test_init_seed=test_init_seed
+        self.test_init_seed_id=0
+        #self.processors=PROCESSORS(self.pro_configs)
         self.job=JOB(self.maxnum_tasks,self.task_configs,self.job_config)
         self.reset_states=reset_states
         self.cut_states=cut_states
@@ -299,8 +301,8 @@ class CSENV:
         task_status.extend([self.womiga,self.sigma])
         task_status=np.array(task_status).reshape(1,-1)
 
-        if self.state_one:
-            self.cal_state_one((pro_status,task_status))
+        #if self.state_one:
+        self.cal_state_one((pro_status,task_status))
         return pro_status,task_status
     
     def send1(self):
@@ -327,10 +329,14 @@ class CSENV:
             items=[pro.pro_dic['twe'],pro.pro_dic['ler'],pro.PF,pro.Aq]
             pro_status.append(items)
         pro_status=np.concatenate((np.array(pro_status),ez_div_er,ez_mul_econs,rz_mul_rcons,rz_div_B,tr_t,task_loc),1).reshape(1,1,self.processors.num_pros,-1)
-        task_status=np.array([self.womiga,self.sigma]).reshape(1,-1)
+        task_status=[]
+        for item in self.tasks.values():
+            task_status.extend(item)
+        task_status.extend([self.womiga,self.sigma])
+        task_status=np.array(task_status).reshape(1,-1)
 
-        if self.state_one:
-            self.cal_state_one((pro_status,task_status))
+        #if self.state_one:
+        self.cal_state_one((pro_status,task_status))
         return pro_status,task_status
 
     def cal_state_one(self,state):
@@ -346,19 +352,21 @@ class CSENV:
         t,s,s_t=0,0,0
         for key,value in self.tar_dic.items():
             value.append(R[key])
+            #if self.reward_one:
             r=(self.bases[key]-R[key])/self.bases_fm[key]
             self.tarb_dic[key+'b'].append(r)
             s+=self.lams[key]*r
-            if not key=='B':
-                t+=self.lams[key]*R[key]
-                s_t+=self.lams[key]*r
+            #s_t+=self.lams[key]*r
+            #if not key=='B':
+            t+=self.lams[key]*R[key]
+            
         self.sum_tar.append(t)
         self.sum_tarb.append(s)
-        self.sum_test_tar.append(s_t)
+        #self.sum_test_tar.append(s_t)
 
     def set_test_mode(self):
         self.train=False
-        self.test_id=0
+        self.test_seed_id=0
     
     def set_train_mode(self):
         self.train=True
@@ -367,22 +375,23 @@ class CSENV:
         self.over=0
         self.done=0
         self.num_steps=0
-        if self.reward_one or self.state_one or self.set_break_time:
+        if self.reward_one or self.state_one or self.set_break_time or self.states_init or self.rewards_init:
             
             agent=RANDOM_AGENT(self.maxnum_tasks)
 
-            if self.reward_one:
+            if self.reward_one or self.rewards_init:
                 bases_old=deepcopy(self.bases)
                 bases_fm_old=deepcopy(self.bases_fm)
                 for key in self.bases:
                     self.bases[key]=0
                     self.bases_fm[key]=1
             
-            state_one_flag=0
-            if self.state_one:
-                state_one_flag=1
+            if self.state_one or self.states_init:
+                states_mean_old=deepcopy(self.states_mean)
+                states_std_old=deepcopy(self.states_std)
+                self.states_mean=[0,0]
+                self.states_std=[1,1]
                 states_orgin=[]
-            self.state_one=False
             
             if self.set_break_time:
                 break_time=0
@@ -394,7 +403,7 @@ class CSENV:
             for _ in range(1):
                 state=self.send()
                 while not self.done:
-                    if state_one_flag:
+                    if self.state_one or self.states_init:
                         states_orgin.append(state)
                     if self.set_break_time:
                         for pro in self.processors.pros:
@@ -417,7 +426,7 @@ class CSENV:
                 self.done=0
                 self.num_steps=0
             
-            if state_one_flag:
+            if self.state_one or self.states_init:
                 states=tuple(np.concatenate([x[i] for x in states_orgin],0) for i in range(len(states_orgin[0])))
                 if self.states_init:
                     self.states_mean[0]=(states[0][:,:,:,:-self.maxnum_tasks].mean(axis=0))
@@ -426,23 +435,22 @@ class CSENV:
                     self.states_std[1]=(states[1].std(axis=0))
                     self.states_init=False
                 else:
-                    self.states_mean[0]=self.state_beta*self.states_mean[0]+(1-self.state_beta)*states[0][:,:,:,:-self.maxnum_tasks].mean(axis=0)
-                    self.states_std[0]=self.state_beta*self.states_std[0]+(1-self.state_beta)*states[0][:,:,:,:-self.maxnum_tasks].std(axis=0)
-                    self.states_mean[1]=self.state_beta*self.states_mean[1]+(1-self.state_beta)*states[1].mean(axis=0)
-                    self.states_std[1]=self.state_beta*self.states_std[1]+(1-self.state_beta)*(states[1].std(axis=0))
-                
-                self.state_one=True
+                    self.states_mean[0]=self.state_beta*states_mean_old[0]+(1-self.state_beta)*states[0][:,:,:,:-self.maxnum_tasks].mean(axis=0)
+                    self.states_std[0]=self.state_beta*states_std_old[0]+(1-self.state_beta)*states[0][:,:,:,:-self.maxnum_tasks].std(axis=0)
+                    self.states_mean[1]=self.state_beta*states_mean_old[1]+(1-self.state_beta)*states[1].mean(axis=0)
+                    self.states_std[1]=self.state_beta*states_std_old[1]+(1-self.state_beta)*(states[1].std(axis=0))
 
-            if self.reward_one:
+            if self.reward_one or self.rewards_init:
                 if self.reward_one_type=='std':
                     if self.rewards_init:
                         for key in self.bases:
                             self.bases[key]=np.array(self.tar_dic[key]).mean()
-                            self.bases_fm[key]=np.array(self.tar_dic[key]).std()+self.fm_eps 
+                            self.bases_fm[key]=np.array(self.tar_dic[key]).std()+self.fm_eps
                             self.rewards_init=False
+                        #self.bases['T']*=-1000000
                     else:
                         for key in self.bases:
-                            self.bases[key]=self.state_beta*bases_old[key]+(1-self.state_beta)*np.array(self.tar_dic[key]).mean()
+                            self.bases[key]=self.state_beta*bases_old[key]+(1-self.state_beta)*(-np.array(self.tar_dic[key]).mean())
                             self.bases_fm[key]=self.state_beta*bases_fm_old[key]+(1-self.state_beta)*(np.array(self.tar_dic[key]).std()+self.fm_eps)
                         
                 
@@ -472,7 +480,37 @@ class CSENV:
 
     def reset(self):
         
-        if self.reset_states:
+        if self.train:
+            np.random.seed(self.train_init_seed[self.train_init_seed_id%len(self.train_init_seed)])
+        else:
+            np.random.seed(self.test_init_seed[self.test_init_seed_id%len(self.test_init_seed)])
+        self.processors=PROCESSORS(self.pro_configs)
+        self.job.job_index=0
+        self.job.tin=0
+        if self.train:
+            np.random.seed(self.train_seed[self.train_seed_id%len(self.train_seed)])
+        else:
+            np.random.seed(self.test_seed[self.test_seed_id%len(self.test_seed)])
+
+        self.set_one()
+
+        if self.train:
+            np.random.seed(self.train_init_seed[self.train_init_seed_id%len(self.train_init_seed)])
+            self.train_init_seed_id+=1
+        else:
+            np.random.seed(self.test_init_seed[self.test_init_seed_id%len(self.test_init_seed)])
+            self.test_init_seed_id+=1
+        self.processors=PROCESSORS(self.pro_configs)
+        self.job.job_index=0
+        self.job.tin=0
+        if self.train:
+            np.random.seed(self.train_seed[self.train_seed_id%len(self.train_seed)])
+            self.train_seed_id+=1
+        else:
+            np.random.seed(self.test_seed[self.test_seed_id%len(self.test_seed)])
+            self.test_seed_id+=1
+        
+        '''if self.reset_states:
             if self.train:
                 np.random.seed(self.seed[self.seedid%len(self.seed)])  
             else:
@@ -514,7 +552,7 @@ class CSENV:
                 self.seedid+=1
             else:
                 np.random.seed(self.test_seed[self.test_id%len(self.test_seed)])
-                self.test_id+=1
+                self.test_id+=1'''
         
         
 
@@ -522,10 +560,13 @@ class CSENV:
     
     def step(self,action:np.ndarray):
         self.accept(action)
-        if self.train:
-            reward=self.sum_tarb[-1]
-        else:
-            reward=self.sum_test_tar[-1]        #change
+        #if self.train:
+        #if self.reward_one:
+        reward=self.sum_tarb[-1]
+        '''else:
+            reward=self.sum_tar[-1]'''
+        '''else:
+            reward=self.sum_test_tar[-1]        #change'''
         self.num_steps+=1
         if self.num_steps>=self.maxnum_episode:
             self.done=1

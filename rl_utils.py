@@ -145,7 +145,8 @@ def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,
             t2=[pro.pro_dic['twe'] for pro in env.processors.pros]
             for a,b in zip(t1,t2):
                 if a and a==b:
-                    print('wrong_env')
+                    #print('wrong_env')
+                    pass
 
             '''for pro in env.processors.pros:
                 print('twe',pro.pro_dic['twe'])
@@ -161,8 +162,12 @@ def train_on_policy_agent_batch(env:CS_ENV.CSENV, agent, num_episodes,max_steps,
             state = next_state
             episode_return += reward
             writer.add_scalar(tag='step_rewards_all',scalar_value=reward,global_step=all_steps)
+            #if env.reward_one:
             for key,value in env.tarb_dic.items():
                 writer.add_scalar(tag='step_rewards_'+key,scalar_value=value[-1]*env.lams[key[0]],global_step=all_steps)
+            '''else:
+                for key,value in env.tar_dic.items():
+                    writer.add_scalar(tag='step_rewards_'+key,scalar_value=value[-1]*env.lams[key[0]],global_step=all_steps)'''
         if done:
             return_list.append(episode_return)
             writer.add_scalar(tag='return',scalar_value=episode_return,global_step=i_episode)

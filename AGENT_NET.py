@@ -350,19 +350,21 @@ class DoubleNet_softmax_simple0(nn.Module):
             nn.init.constant_(m.bias, 0)
 
 class DoubleNet_softmax_simple(nn.Module):
-    def __init__(self,input_shape,num_subtasks,tanh=False,depart=True):
+    def __init__(self,input_shape,num_subtasks,tanh=False,depart=True,fc=True):
         super(DoubleNet_softmax_simple,self).__init__()
         self.num_processors=input_shape[0][2]
         self.num_attributes=input_shape[0][-1]
         self.num_subtasks=num_subtasks
         self.depart=depart
+        self.fc=fc
         hs=256
         self.base_row_p=nn.Conv2d(1,hs,kernel_size=(1,input_shape[0][-1]),stride=1)
         self.base_col_p=nn.Conv2d(1,hs,kernel_size=(input_shape[0][2],1),stride=1)
 
         #self.base_row_v=nn.Conv2d(1,hs,kernel_size=(1,input_shape[0][-1]),stride=1)
         #self.base_col_v=nn.Conv2d(1,hs,kernel_size=(input_shape[0][2],1),stride=1)
-        self.base_all=nn.Conv2d(1,3*hs,kernel_size=(input_shape[0][2],input_shape[0][-1]),stride=1)
+        if self.fc:
+            self.base_all=nn.Conv2d(1,3*hs,kernel_size=(input_shape[0][2],input_shape[0][-1]),stride=1)
         conv_out_size=self._get_conv_out(input_shape)+input_shape[1][1]
         self.tanh=tanh
         self.fc_p=nn.Sequential(
@@ -418,15 +420,20 @@ class DoubleNet_softmax_simple(nn.Module):
         s=input_shape[0][-2:]
         o_row=self.base_row_p(torch.zeros(1,1,*s))
         o_col=self.base_col_p(torch.zeros(1,1,*s))
-        o_all=self.base_all(torch.zeros(1,1,*s))
-        #return int(np.prod(o_row.shape)+np.prod(o_col.shape)+np.prod(o_all.shape))
-        return int(np.prod(o_row.shape)+np.prod(o_col.shape)+np.prod(o_all.shape))
+        if self.fc:
+            o_all=self.base_all(torch.zeros(1,1,*s))
+            return int(np.prod(o_row.shape)+np.prod(o_col.shape)+np.prod(o_all.shape))
+        else:
+            return int(np.prod(o_row.shape)+np.prod(o_col.shape))
     
     def forward(self,x):
         conv_out_row=self.base_row_p(x[0]).view(x[0].size()[0],-1)
         conv_out_col=self.base_col_p(x[0]).view(x[0].size()[0],-1)
-        conv_out_all=self.base_all(x[0]).view(x[0].size()[0],-1)
-        conv_out=torch.cat((conv_out_row,conv_out_col,conv_out_all,x[1]),1)
+        if self.fc:
+            conv_out_all=self.base_all(x[0]).view(x[0].size()[0],-1)
+            conv_out=torch.cat((conv_out_row,conv_out_col,conv_out_all,x[1]),1)
+        else:
+            conv_out=torch.cat((conv_out_row,conv_out_col,x[1]),1)
         out_fc=self.fc_p(conv_out)
         l1=[]
         for layer,i in zip(self.policy_layer,range(self.num_subtasks)):
@@ -438,15 +445,26 @@ class DoubleNet_softmax_simple(nn.Module):
             else:
                 w=layer(out_fc)
             p=(1/(-u))+1+w
-            if p.sum().isnan().item():
+            if torch.isnan(p.sum()) or torch.isinf(p.sum())>0:
                 print('net_here')
-            l1.append(p)
-        l2=[3*layer(out_fc) if self.tanh else layer(out_fc)  for layer in self.prior_layer]
+            l1.append(p.unsqueeze(0))
+        l2=[3*layer(out_fc).unsqueeze(0) if self.tanh else layer(out_fc).unsqueeze(0)  for layer in self.prior_layer]
+        l1=torch.cat(l1,dim=0)
+        l2=torch.cat(l2,dim=0)
+        '''a_1=torch.zeros((len(l1),l1[0].shape[0],l1[0].shape[1]),device='cuda')
+        for i in range(len(l1)):
+            a_1[i]=l1[i]
+        a_2=torch.zeros((len(l2),l2[0].shape[0],l2[0].shape[1]),device='cuda') #change!!!
+        for i in range(len(l2)):
+            a_2[i]=l2[i]'''
         if self.depart:
             conv_out_row=self.base_row_v(x[0]).view(x[0].size()[0],-1)
             conv_out_col=self.base_col_v(x[0]).view(x[0].size()[0],-1)
-            conv_out_all=self.base_all(x[0]).view(x[0].size()[0],-1)
-            conv_out=torch.cat((conv_out_row,conv_out_col,conv_out_all,x[1]),1)
+            if self.fc:
+                conv_out_all=self.base_all(x[0]).view(x[0].size()[0],-1)
+                conv_out=torch.cat((conv_out_row,conv_out_col,conv_out_all,x[1]),1)
+            else:
+                conv_out=torch.cat((conv_out_row,conv_out_col,x[1]),1)
             out_fc=self.fc_v(conv_out)
         critic=self.critic_out(out_fc)
         return (l1,l2),critic

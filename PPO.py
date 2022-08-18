@@ -582,8 +582,8 @@ class PPO_softmax1:
             loss=actor_loss+self.weights*critic_loss
             if self.beta:
                 loss+=epo_loss
-            
-            if torch.isnan(loss)>0:
+            print(loss)
+            if torch.isnan(loss)>0 or torch.isinf(loss)>0:
                 print("here!")
             self.agent_optimizer.zero_grad()
             #self.agent.zero_grad()
@@ -723,7 +723,8 @@ class PPO_softmax:
             for x in probs_subtasks_orginal]
 
         action_prior=[]
-        probs_prior_orginal=torch.cat(probs_prior_orginal,0)
+        #probs_prior_orginal=torch.cat(probs_prior_orginal,0)
+        probs_prior_orginal=probs_prior_orginal[:,0]
         probs_prior_orginal=torch.tensor(
             np.concatenate((probs_prior_orginal.cpu().detach().numpy(),np.arange(self.num_subtasks).reshape(1,-1)),0),dtype=torch.float)
         for i in range(self.num_subtasks):
@@ -802,7 +803,8 @@ class PPO_softmax:
             loss.backward()
             #critic_loss.backward()
             #loss+=critic_loss
-            if torch.isnan(loss)>0:
+            #print(loss)
+            if torch.isnan(loss)>0 or torch.isinf(loss)>0:
                 print("here!")
             if not self.clip_grad=='max':
                 nn_utils.clip_grad_norm_(self.agent.parameters(),self.clip_grad)
@@ -843,13 +845,40 @@ class PPO_softmax:
         self.writer.add_scalar(tag='ratio',scalar_value=ratio.mean().item(),global_step=self.step)
     
     def calculate_probs_log(self,out_puts,actions):
-        probs_log=0
+        '''probs_log=0
+        yyu=torch.gather(FU.log_softmax(out_puts[0],dim=2),2,actions[0].unsqueeze(0)).squeeze(0).sum(dim=1)
         for i in range(self.num_subtasks):
-            t=torch.gather(FU.log_softmax(out_puts[0][i],dim=1),1,actions[0][:,[i]])
+            t=torch.gather(FU.log_softmax(out_puts[0][i],dim=1),1,actions[0][:,[i]])   #can be changed
             probs_log+=t
+            print(t.sum().item())
+            if torch.isnan(t.sum())>0 or torch.isinf(t.sum())>0 or t.sum().item()>100:
+                print("probs_subtasks_too_big!")'''
+        probs_log=torch.gather(FU.log_softmax(out_puts[0],dim=2),2,actions[0].T.view(out_puts[0].shape[0],-1,1)).unsqueeze(0).sum(dim=1)
+        if torch.isnan(probs_log.sum())>0 or torch.isinf(probs_log.sum())>0:
+            print("probs_subtasks_too_big!")
+                
+        #out_puts[1]=torch.vstack(out_puts[1])
+        mask=torch.zeros_like(out_puts[1])
+        for i in range(self.num_subtasks-2):
+            mask[i+1:,range(mask.shape[1]),actions[1][:,i]]=-1/self.fm_eps
+        out_puts_1=out_puts[1]+mask
+        probs_log+=torch.gather(FU.log_softmax(out_puts_1,dim=2),2,actions[1][:,:-1].T.view(out_puts_1.shape[0],-1,1)).unsqueeze(0).sum(dim=1)
+        if torch.isnan(probs_log.sum())>0 or torch.isinf(probs_log.sum())>0:
+            print("probs_subtasks_too_big!")
+
+        '''probs_log=0
         for i in range(self.num_subtasks-1):
+            t=torch.gather(FU.log_softmax(out_puts_1[i],dim=1),1,actions[1][:,[i]])
+            probs_log+=t
+            print(t.sum().item())
+            if torch.isnan(t.sum())>0 or torch.isinf(t.sum())>0 or t.sum().item()>100:
+                print("probs_subtasks_too_big!")'''
+
+        '''for i in range(self.num_subtasks-1):
             t=torch.gather(out_puts[1][i],1,actions[1][:,[i]])
             u=out_puts[1][i].exp().sum(axis=1,keepdim=True)
             s=torch.gather(out_puts[1][i].exp(),1,actions[1][:,:i]).sum(axis=1,keepdim=True)
             probs_log+=t-(u-s).log()
-        return probs_log
+            if torch.isnan((t-(u-s).log()).sum())>0 or torch.isinf((t-(u-s).log()).sum())>0:
+                print("probs_prior_too_big!")'''
+        return probs_log.squeeze(0)
