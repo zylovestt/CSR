@@ -17,11 +17,12 @@ env_steps=50
 max_steps=10
 tanh=False #False
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+#device=torch.device("cpu")
 iseed=1
 tseed=[np.random.randint(0,1000) for _ in range(1000)]
 tseed_init=[np.random.randint(0,1000) for _ in range(1000)]
-seed=[1,2]
-seed_init=[1,2,3,4]
+seed=[1]
+seed_init=[2]
 '''F,Q,er,econs,rcons,B,p,g,d,w,alpha,twe,ler'''
 np.set_printoptions(2)
 pro_dic={}
@@ -75,7 +76,7 @@ bases_fm={x:0 for x in z}
 
 
 env_c=CS_ENV.CSENV(pro_dics,maxnum_tasks,task_dics,
-        job_dic,loc_config,lams,env_steps,bases,bases_fm,seed,tseed,reset_states=True,
+        job_dic,loc_config,lams,env_steps,bases,bases_fm,seed,tseed,
         change_prob=0.0,send_type=1,reward_one=False,state_one=False,
         set_break_time=False,state_beta=1,reward_one_type='std',
         train_init_seed=seed_init,test_init_seed=tseed_init)
@@ -92,10 +93,10 @@ for key in env_c.bases:
     env_c.tar_dic[key]=[]
     env_c.tarb_dic[key+'b']=[]'''
 
-if env_c.reset_states:
+'''if env_c.reset_states:
     env_c.cut_states=False
 else:
-    env_c.cut_states=True
+    env_c.cut_states=True'''
 state=env_c.reset() #use seed
 W=(state[0].shape,state[1].shape)
 net=AGENT_NET.DoubleNet_softmax_simple(W,maxnum_tasks,tanh,depart=True,fc=False).to(device)  #change

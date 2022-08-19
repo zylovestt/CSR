@@ -753,7 +753,7 @@ class PPO_softmax:
         overs=F(transition_dict['overs']).view(-1,1)
         
 
-        #dones=transition_dict['dones']
+        dones=transition_dict['dones']
         #if self.cri_type=='gce':
         all_states=tuple(torch.concat((states[i][0:1],next_states[i])) for i in range(2))
         temp=self.agent(all_states)[1]
@@ -762,8 +762,8 @@ class PPO_softmax:
     
         #td_target=rewards+self.gamma*self.agent(next_states)[1]*(1-overs)
         #td_delta=td_target-self.agent(states)[1]
-        advantage = rl_utils.compute_advantage(self.gamma, self.lmbda,td_delta.cpu()).to(self.device)
-        #advantage = rl_utils.compute_advantage_batch(self.gamma, self.lmbda,td_delta.cpu(),dones).to(self.device)
+        #advantage = rl_utils.compute_advantage(self.gamma, self.lmbda,td_delta.cpu()).to(self.device)
+        advantage = rl_utils.compute_advantage_batch(self.gamma, self.lmbda,td_delta.cpu(),dones).to(self.device)
         '''if self.reward_one:
             advantage=(advantage)/(advantage.std()+self.fm_eps)'''
         if self.cri_type=='gce':

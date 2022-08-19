@@ -1,7 +1,7 @@
 import CS_ENV
 import torch
 from TEST import model_test
-from CS_A3C_test import env_c,f_worker,MAXNUM_TASKS,W,TANH,DEVICE
+from CS_A3C_test_old import env_c,f_worker,MAXNUM_TASKS,W,TANH,DEVICE
 import AGENT_NET
 
 print('start_test'+'#'*60)

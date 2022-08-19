@@ -15,7 +15,7 @@ agent = PPO.PPO_softmax(W,maxnum_tasks,weights=1,gamma=gamma,device=device,clip_
     epochs=epochs,eps=eps,beta=beta,net=net,optim=optim,cut=False,norm='u',reward_one=False,state_beta=-1,cri_type='gce')
 if load_net:
     agent.agent.load_state_dict(torch.load("../data/CS_PPO_model_parameter_last.pkl"))
-    agent.agent_optimizer=torch.optim.SGD(params=agent.agent.parameters(),lr=lr,momentum=0.9)
+    #agent.agent_optimizer=torch.optim.SGD(params=agent.agent.parameters(),lr=lr,momentum=0.9)
 
 if __name__=='__main__': 
     t_start=time.time()

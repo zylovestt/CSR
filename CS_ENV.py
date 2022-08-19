@@ -213,7 +213,7 @@ class JOB:
 class CSENV:
     name=0
     def __init__(self,pro_configs:list,maxnum_tasks:int,task_configs:list,job_config:dict,loc_config,
-        lams:dict,maxnum_episode:int,bases:dict,bases_fm:dict,train_seed:list,test_seed:list,reset_states=False,
+        lams:dict,maxnum_episode:int,bases:dict,bases_fm:dict,train_seed:list,test_seed:list,
         cut_states=False,reset_step=False,change_prob=0,send_type=1,time_steps=5,time_break=2,
         state_one=True,reward_one=True,states_mean=[0,0],states_std=[1,1],fm_eps=1,set_break_time=True,
         state_beta=0.95,reward_one_type='std',train_init_seed=[],test_init_seed=[]):  #state_beta=1
@@ -255,7 +255,6 @@ class CSENV:
         self.test_init_seed_id=0
         #self.processors=PROCESSORS(self.pro_configs)
         self.job=JOB(self.maxnum_tasks,self.task_configs,self.job_config)
-        self.reset_states=reset_states
         self.cut_states=cut_states
         self.reset_step=reset_step
         self.change_prob=change_prob
@@ -271,6 +270,7 @@ class CSENV:
         self.state_beta=state_beta
         self.states_init=True
         self.rewards_init=True
+        self.set_break_time_init=True
         self.reward_one_type=reward_one_type
     
     def send(self):
@@ -375,7 +375,7 @@ class CSENV:
         self.over=0
         self.done=0
         self.num_steps=0
-        if self.reward_one or self.state_one or self.set_break_time or self.states_init or self.rewards_init:
+        if self.reward_one or self.state_one or self.set_break_time or self.states_init or self.rewards_init or self.set_break_time_init:
             
             agent=RANDOM_AGENT(self.maxnum_tasks)
 
@@ -393,7 +393,7 @@ class CSENV:
                 self.states_std=[1,1]
                 states_orgin=[]
             
-            if self.set_break_time:
+            if self.set_break_time or self.set_break_time_init:
                 break_time=0
             
             for key in self.bases:
@@ -405,7 +405,7 @@ class CSENV:
                 while not self.done:
                     if self.state_one or self.states_init:
                         states_orgin.append(state)
-                    if self.set_break_time:
+                    if self.set_break_time or self.set_break_time_init:
                         for pro in self.processors.pros:
                             break_time+=pro.pro_dic['twe']+pro.pro_dic['ler']
                     action = agent.take_action(state)
@@ -426,19 +426,19 @@ class CSENV:
                 self.done=0
                 self.num_steps=0
             
-            if self.state_one or self.states_init:
+            if self.state_one or self.states_init:  #可以简略 change
                 states=tuple(np.concatenate([x[i] for x in states_orgin],0) for i in range(len(states_orgin[0])))
+                self.states_mean[0]=(states[0][:,:,:,:-self.maxnum_tasks].mean(axis=0))
+                self.states_std[0]=(states[0][:,:,:,:-self.maxnum_tasks].std(axis=0))
+                self.states_mean[1]=(states[1].mean(axis=0))
+                self.states_std[1]=(states[1].std(axis=0))
                 if self.states_init:
-                    self.states_mean[0]=(states[0][:,:,:,:-self.maxnum_tasks].mean(axis=0))
-                    self.states_std[0]=(states[0][:,:,:,:-self.maxnum_tasks].std(axis=0))
-                    self.states_mean[1]=(states[1].mean(axis=0))
-                    self.states_std[1]=(states[1].std(axis=0))
                     self.states_init=False
                 else:
-                    self.states_mean[0]=self.state_beta*states_mean_old[0]+(1-self.state_beta)*states[0][:,:,:,:-self.maxnum_tasks].mean(axis=0)
-                    self.states_std[0]=self.state_beta*states_std_old[0]+(1-self.state_beta)*states[0][:,:,:,:-self.maxnum_tasks].std(axis=0)
-                    self.states_mean[1]=self.state_beta*states_mean_old[1]+(1-self.state_beta)*states[1].mean(axis=0)
-                    self.states_std[1]=self.state_beta*states_std_old[1]+(1-self.state_beta)*(states[1].std(axis=0))
+                    self.states_mean[0]=self.state_beta*states_mean_old[0]+(1-self.state_beta)*self.states_mean[0]
+                    self.states_std[0]=self.state_beta*states_std_old[0]+(1-self.state_beta)*self.states_std[0]
+                    self.states_mean[1]=self.state_beta*states_mean_old[1]+(1-self.state_beta)*self.states_mean[1]
+                    self.states_std[1]=self.state_beta*states_std_old[1]+(1-self.state_beta)*self.states_std[1]
 
             if self.reward_one or self.rewards_init:
                 if self.reward_one_type=='std':
@@ -475,8 +475,13 @@ class CSENV:
                 self.tar_dic[key]=[]
                 self.tarb_dic[key+'b']=[]  #关键'''
             
-            if self.set_break_time:
+            
+            if self.set_break_time_init:
                 self.time_break=break_time/(3*self.time_steps*self.maxnum_episode*self.num_pros)
+                self.set_break_time=False
+            elif self.set_break_time:
+                self.time_break=self.state_beta*self.time_break+(1-self.state_beta)*(break_time/(3*self.time_steps*self.maxnum_episode*self.num_pros))
+
 
     def reset(self):
         
